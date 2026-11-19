@@ -39,6 +39,8 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
 .val{min-width:44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .toggles{display:flex;flex-wrap:wrap;gap:10px}
 .chip{border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600}
+.chip.clear{padding:6px 12px;font-size:13px;margin-bottom:6px}
+.chip.clear.undo{border-color:var(--gold);color:var(--gold)}
 .chip[aria-pressed=true]{background:var(--gold);color:var(--gold-ink);border-color:var(--gold)}
 .primary{background:var(--gold);color:var(--gold-ink);border-radius:16px;padding:18px;font-size:18px;font-weight:800}
 .secondary{border:1px solid var(--line);border-radius:14px;padding:14px;font-size:15px;font-weight:700}
@@ -136,7 +138,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     </div>
 
     <div>
-      <label class="cap" for="script">Skrip</label>
+      <div class="row"><label class="cap" for="script">Skrip</label><button class="chip clear" id="clearScript" type="button">✕ Padam skrip</button></div>
       <textarea id="script" spellcheck="false" placeholder="Tampal skrip di sini..."></textarea>
       <div class="meta"><span id="words">0 perkataan</span><span id="est">± 0:00</span></div>
     </div>
@@ -242,8 +244,23 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     const sec = Math.round(n / 2.4);   // Malay talking pace, about 145 words a minute
     $('est').textContent = '± ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ' bila dibaca';
   }
-  ta.addEventListener('input', () => { S.script = ta.value; store.set('script', ta.value); countWords(); });
-  countWords();
+  // clear the old script in one tap; for 6 s the same button brings it back (in case of a mis-tap)
+  const clr = $('clearScript'); let undoText = null, undoT = 0;
+  function setScript(v) { ta.value = v; S.script = v; store.set('script', v); countWords(); }
+  function clearLabel() {
+    clr.classList.toggle('undo', undoText !== null);
+    clr.textContent = undoText !== null ? '↶ Batal padam' : '✕ Padam skrip';
+    clr.hidden = undoText === null && !ta.value.trim();
+  }
+  clr.onclick = () => {
+    clearTimeout(undoT);
+    if (undoText !== null) { setScript(undoText); undoText = null; }
+    else { undoText = ta.value; setScript(''); ta.focus(); undoT = setTimeout(() => { undoText = null; clearLabel(); }, 6000); }
+    clearLabel();
+  };
+  ta.addEventListener('input', () => { S.script = ta.value; store.set('script', ta.value); countWords();
+    if (undoText !== null && ta.value) { clearTimeout(undoT); undoText = null; } clearLabel(); });
+  countWords(); clearLabel();
   function bindRange(id, key, out) {
     const el = $(id); el.value = S[key]; $(out).textContent = S[key];
     el.addEventListener('input', () => { S[key] = +el.value; $(out).textContent = el.value; store.set(key, S[key]); });
