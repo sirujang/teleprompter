@@ -208,7 +208,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
       <button class="secondary" id="again" type="button">Rakam semula</button>
       <button class="secondary" id="toScript" type="button">Tukar skrip</button>
     </div>
-    <p class="sub" id="wideHint" style="margin:0" hidden>Fail ini simpan gambar penuh kamera (sedikit lebih lebar daripada skrin rakam). GAC akan potong ke 9:16 ikut muka masa edit.</p>
+    <p class="sub" id="wideHint" style="margin:0" hidden>Browser ini tak dapat potong 9:16 semasa merakam, jadi fail simpan gambar penuh kamera (lebih lebar). GAC akan potong ke 9:16 ikut muka masa edit.</p>
     <p class="sub" id="shareHint" style="margin:0">Dalam menu kongsi, pilih <b>Simpan Video</b> untuk masuk Galeri, atau terus hantar ke WhatsApp, AirDrop atau Google Drive.</p>
   </div>
 </section>
@@ -383,14 +383,35 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
       const id = setInterval(() => { n--; if (n === 0) { clearInterval(id); el.hidden = true; res(); } else el.textContent = n; }, 1000);
     });
   }
+  // Cut the middle 9:16 of the camera picture into a canvas at full sensor detail (1440x1920 -> 1080x1920,
+  // no scaling) and record that, so the saved file is ready for TikTok/Reels. Not mirrored: text reads right.
+  function cropStream() {
+    const cam = $('cam'), vw = cam.videoWidth, vh = cam.videoHeight;
+    if (!vw || !vh || !HTMLCanvasElement.prototype.captureStream) return null;
+    let cw = vw, ch = vh;
+    if (vw / vh > 9 / 16) cw = Math.round(vh * 9 / 16 / 2) * 2; else ch = Math.round(vw * 16 / 9 / 2) * 2;
+    if (cw === vw && ch === vh) return null;   // already 9:16: record the camera as it is
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    c.style.cssText = 'position:fixed;left:-10000px;top:0;width:2px;height:2px;pointer-events:none';
+    document.body.appendChild(c);
+    const g = c.getContext('2d', { alpha: false }), sx = (vw - cw) / 2, sy = (vh - ch) / 2;
+    const draw = () => g.drawImage(cam, sx, sy, cw, ch, 0, 0, cw, ch);
+    // a steady 30 fps timer: does not depend on screen animation or video-frame callbacks
+    draw(); const tid = setInterval(draw, 1000 / 30);
+    const vs = c.captureStream(30);
+    S.cropStop = () => { clearInterval(tid); vs.getTracks().forEach(t => t.stop()); c.remove(); };
+    S.res = cw + '×' + ch;
+    return new MediaStream([...vs.getVideoTracks(), ...S.stream.getAudioTracks()]);
+  }
   async function startRec() {
     if (!S.stream) { const ok = await openCamera(); if (!ok) return; }
     $('rec').disabled = true;
     await countdown();
     [S.mime, S.ext] = pickMime(); S.chunks = [];
+    const recStream = cropStream() || S.stream;   // 9:16 file; the raw 4:3 camera only if this browser cannot crop
     try {
-      S.rec = new MediaRecorder(S.stream, { mimeType: S.mime || undefined, videoBitsPerSecond: 12_000_000, audioBitsPerSecond: 192_000 });
-    } catch { S.rec = new MediaRecorder(S.stream); }
+      S.rec = new MediaRecorder(recStream, { mimeType: S.mime || undefined, videoBitsPerSecond: 12_000_000, audioBitsPerSecond: 192_000 });
+    } catch { S.rec = new MediaRecorder(recStream); }
     S.mime = S.rec.mimeType || S.mime;
     if (/webm/.test(S.mime)) S.ext = 'webm';
     S.rec.ondataavailable = e => { if (e.data && e.data.size) S.chunks.push(e.data); };
@@ -409,7 +430,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     clearInterval(S.timerId); stopScroll();
     $('rec').classList.remove('on'); $('rec').setAttribute('aria-label', 'Mula rakam');
     $('topbar').hidden = true; $('back').disabled = false; $('back').style.opacity = 1;
-    S.rec = null;
+    S.rec = null; if (S.cropStop) { S.cropStop(); S.cropStop = null; }
     const blob = new Blob(S.chunks, { type: S.mime.split(';')[0] || 'video/mp4' }); S.chunks = [];
     stopCamera(); wakeOff();
     const at = Date.now();
