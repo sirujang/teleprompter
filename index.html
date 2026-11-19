@@ -205,6 +205,8 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     <div class="btns">
       <button class="primary" id="share" type="button">Simpan ke Galeri / Kongsi</button>
       <button class="secondary" id="download" type="button">Muat turun fail</button>
+      <button class="secondary" id="small" type="button" hidden>Buat fail kecil untuk chat</button>
+      <p class="sub" id="smallInfo" style="margin:0" hidden></p>
       <button class="secondary" id="again" type="button">Rakam semula</button>
       <button class="secondary" id="toScript" type="button">Tukar skrip</button>
     </div>
@@ -480,7 +482,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     return `rakaman_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${S.ext}`;
   }
   function openReview(blob, dur, at) {
-    S.blob = blob; S.at = at;
+    S.blob = blob; S.at = at; S.dur = dur; S.small = null; resetSmall();
     if (S.url) URL.revokeObjectURL(S.url);
     S.url = URL.createObjectURL(blob);
     const pv = $('playback'); pv.src = S.url;
@@ -501,6 +503,157 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     const a = document.createElement('a'); a.href = S.url; a.download = fileName(S.at);
     document.body.appendChild(a); a.click(); a.remove(); idb.clear(); $('restore').hidden = true;
     toast(/iPhone|iPad/.test(ua) ? 'Disimpan dalam app Files → Muat Turun.' : 'Disimpan dalam folder Downloads.', 4500);
+  };
+  // ---------- small copy for chat uploads (full-quality recording stays as it is) ----------
+  // Re-encodes a copy on the phone with WebCodecs: picture 720 wide, bitrate chosen so the file is about
+  // SMALL_MB, sound copied as it is (no quality loss). Needs iOS 16.4+ / a recent Chrome; hidden otherwise.
+  const SMALL_MB = 24;
+  const smallBps = () => Math.round(Math.min(4e6, Math.max(1.2e6, SMALL_MB * 8e6 / Math.max(1, S.dur || 60) - 180e3)));
+  function resetSmall() {
+    const b = $('small'), ok = 'VideoEncoder' in window && 'VideoDecoder' in window && S.ext === 'mp4';
+    b.hidden = !ok; b.disabled = false; $('smallInfo').hidden = true;
+    const est = (smallBps() + 180e3) * (S.dur || 0) / 8 / 1048576;
+    b.textContent = 'Buat fail kecil untuk chat (± ' + Math.max(1, Math.round(est)) + ' MB)';
+  }
+  function loadScript(src) {
+    return new Promise((res, rej) => { if (document.querySelector('script[src="' + src + '"]')) return res();
+      const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load')); document.head.appendChild(s); });
+  }
+  // Samples of one track of a fragmented MP4 (moof/traf/trun), in decode order.
+  function fragSamples(u8, tid, timescale) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), rd = i => dv.getUint32(i), out = [];
+    function* boxes(s, e) {
+      let i = s;
+      while (i + 8 <= e) {
+        let sz = rd(i), h = 8; const t = String.fromCharCode(u8[i + 4], u8[i + 5], u8[i + 6], u8[i + 7]);
+        if (sz === 1) { sz = Number(dv.getBigUint64(i + 8)); h = 16; } else if (sz === 0) sz = e - i;
+        if (sz < h) return;
+        yield [t, i, i + h, i + sz]; i += sz;
+      }
+    }
+    for (const [t, ms, mc, me] of boxes(0, u8.length)) {
+      if (t !== 'moof') continue;
+      for (const [t2, , c2, e2] of boxes(mc, me)) {
+        if (t2 !== 'traf') continue;
+        let id = -1, base = ms, dDur = 0, dSize = 0, dFlags = 0, time = 0, pos = null;
+        for (const [t3, , c3] of boxes(c2, e2)) {
+          if (t3 === 'tfhd') {
+            const fl = rd(c3) & 0xffffff; id = rd(c3 + 4); let p = c3 + 8;
+            if (fl & 1) { base = Number(dv.getBigUint64(p)); p += 8; }
+            if (fl & 2) p += 4;
+            if (fl & 8) { dDur = rd(p); p += 4; }
+            if (fl & 0x10) { dSize = rd(p); p += 4; }
+            if (fl & 0x20) { dFlags = rd(p); p += 4; }
+          } else if (id !== tid) continue;
+          else if (t3 === 'tfdt') time = u8[c3] === 1 ? Number(dv.getBigUint64(c3 + 4)) : rd(c3 + 4);
+          else if (t3 === 'trun') {
+            const v = u8[c3], fl = rd(c3) & 0xffffff, n = rd(c3 + 4); let p = c3 + 8, off = pos === null ? base : pos, first = null;
+            if (fl & 1) { off = base + dv.getInt32(p); p += 4; }
+            if (fl & 4) { first = rd(p); p += 4; }
+            for (let k = 0; k < n; k++) {
+              let dur = dDur, size = dSize, flags = dFlags, cto = 0;
+              if (fl & 0x100) { dur = rd(p); p += 4; }
+              if (fl & 0x200) { size = rd(p); p += 4; }
+              if (fl & 0x400) { flags = rd(p); p += 4; }
+              if (fl & 0x800) { cto = v ? dv.getInt32(p) : rd(p); p += 4; }
+              if (k === 0 && first !== null) flags = first;
+              out.push({ data: u8.subarray(off, off + size), cts: time + cto, duration: dur, is_sync: !(flags & 0x10000), timescale });
+              off += size; time += dur;
+            }
+            pos = off;
+          }
+        }
+      }
+    }
+    return out;
+  }
+  async function makeSmall(blob, onProgress) {
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js');
+    // 1. read the recording's samples
+    const buf = await blob.arrayBuffer(); buf.fileStart = 0;
+    const mp4 = MP4Box.createFile(); const samples = {};
+    const info = await new Promise((res, rej) => { mp4.onReady = res; mp4.onError = rej; mp4.appendBuffer(buf); mp4.flush(); });
+    const vt = info.videoTracks[0], at = info.audioTracks[0];
+    if (!vt) throw new Error('no video');
+    if (info.isFragmented) {
+      // Safari writes fragments with several sample runs per track; mp4box 0.5.2 misreads the later runs,
+      // so the samples are read here directly (moov details still come from mp4box)
+      const u8 = new Uint8Array(buf);
+      for (const t of [vt, at].filter(Boolean)) samples[t.id] = fragSamples(u8, t.id, t.timescale);
+    } else {
+      mp4.onSamples = (id, u, ss) => { for (const x of ss) (samples[id] = samples[id] || []).push(x); };
+      for (const t of [vt, at].filter(Boolean)) mp4.setExtractionOptions(t.id, null, { nbSamples: 1e9 });
+      mp4.start(); mp4.flush();
+    }
+    const entry = id => mp4.getTrackById(id).mdia.minf.stbl.stsd.entries[0];
+    const boxBytes = box => { const s = new DataStream(undefined, 0, DataStream.BIG_ENDIAN); box.write(s); return new Uint8Array(s.buffer, 8); };
+    // 2. size and turn of the output picture (raw camera files can carry a 90° turn)
+    const m = vt.matrix || [65536, 0, 0, 0, 65536]; const rot = Math.round(Math.atan2(m[1], m[0]) * 180 / Math.PI);
+    const sw = vt.video.width, sh = vt.video.height, turned = Math.abs(rot) === 90;
+    const dw0 = turned ? sh : sw, dh0 = turned ? sw : sh, k = Math.min(1, 720 / Math.min(dw0, dh0));
+    const W2 = Math.round(dw0 * k / 2) * 2, H2 = Math.round(dh0 * k / 2) * 2;
+    const cv = document.createElement('canvas'); cv.width = W2; cv.height = H2; const g = cv.getContext('2d');
+    // 3. encoder + muxer
+    const bps = smallBps();
+    let cfg = null;
+    for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028']) {
+      const c = { codec, width: W2, height: H2, bitrate: bps, framerate: 30, avc: { format: 'avc' } };
+      try { if ((await VideoEncoder.isConfigSupported(c)).supported) { cfg = c; break; } } catch {}
+    }
+    if (!cfg) throw new Error('no encoder');
+    const aEntry = at && entry(at.id);
+    const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), fastStart: 'in-memory', firstTimestampBehavior: 'cross-track-offset',
+      video: { codec: 'avc', width: W2, height: H2 },
+      audio: at ? { codec: 'aac', numberOfChannels: at.audio.channel_count, sampleRate: at.audio.sample_rate } : undefined });
+    let fail = null, done = 0; const total = samples[vt.id].length;
+    const enc = new VideoEncoder({ output: (ch, meta) => muxer.addVideoChunk(ch, meta), error: e => fail = e });
+    enc.configure(cfg);
+    const dec = new VideoDecoder({ error: e => fail = e, output: f => {
+      g.save(); g.translate(W2 / 2, H2 / 2); if (rot) g.rotate(rot * Math.PI / 180);
+      const fw = turned ? H2 : W2, fh = turned ? W2 : H2; g.drawImage(f, -fw / 2, -fh / 2, fw, fh); g.restore();
+      const nf = new VideoFrame(cv, { timestamp: f.timestamp, duration: f.duration || 33333 }); f.close();
+      enc.encode(nf, { keyFrame: done % 60 === 0 }); nf.close(); done++; onProgress(done / total);
+    } });
+    const ve = entry(vt.id);
+    dec.configure({ codec: vt.codec, codedWidth: sw, codedHeight: sh, description: boxBytes(ve.avcC || ve.hvcC) });
+    const us = (v, ts) => Math.round(v * 1e6 / ts);
+    for (const s of samples[vt.id]) {
+      if (fail) throw fail;
+      dec.decode(new EncodedVideoChunk({ type: s.is_sync ? 'key' : 'delta', timestamp: us(s.cts, s.timescale), duration: us(s.duration, s.timescale), data: s.data }));
+      while ((dec.decodeQueueSize > 8 || enc.encodeQueueSize > 8) && !fail) await new Promise(r => setTimeout(r, 4));
+    }
+    await dec.flush(); await enc.flush(); if (fail) throw fail;
+    // 4. sound: copied as it is
+    if (at) {
+      const esd = aEntry.esds && aEntry.esds.esd; const dsi = esd && esd.descs[0] && esd.descs[0].descs[0];
+      const meta = { decoderConfig: { codec: 'mp4a.40.2', numberOfChannels: at.audio.channel_count, sampleRate: at.audio.sample_rate, description: dsi ? new Uint8Array(dsi.data) : undefined } };
+      samples[at.id].forEach((s, i) => muxer.addAudioChunkRaw(s.data, 'key', us(s.cts, s.timescale), us(s.duration, s.timescale), i === 0 ? meta : undefined));
+    }
+    muxer.finalize(); dec.close(); enc.close();
+    return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  }
+  async function saveBlob(blob, name) {
+    const file = new File([blob], name, { type: blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
+    toast(/iPhone|iPad/.test(ua) ? 'Disimpan dalam app Files → Muat Turun.' : 'Disimpan dalam folder Downloads.', 4500);
+  }
+  $('small').onclick = async () => {
+    const b = $('small'), name = fileName(S.at).replace(/\.(\w+)$/, '_kecil.mp4');
+    if (S.small) { saveBlob(S.small, name); return; }   // second tap: save (the share sheet needs a fresh tap)
+    b.disabled = true; b.textContent = 'Memampatkan… 0%';
+    try {
+      S.small = await makeSmall(S.blob, p => b.textContent = 'Memampatkan… ' + Math.min(99, Math.round(p * 100)) + '%');
+      b.disabled = false; b.textContent = 'Simpan fail kecil (' + fmtMB(S.small.size) + ')';
+      $('smallInfo').textContent = 'Fail kecil siap: ' + fmtMB(S.small.size) + ', 720p. Tekan butang di atas untuk simpan atau kongsi.'; $('smallInfo').hidden = false;
+    } catch (e) {
+      console.error(e); b.hidden = true; S.small = null;
+      toast('Telefon ini tak dapat buat fail kecil. Guna fail biasa.', 4500);
+    }
   };
   $('again').onclick = async () => { $('playback').pause(); show('studio'); layoutPrompter(); await openCamera(); wakeOn(); };
   $('toScript').onclick = () => { $('playback').pause(); show('setup'); };
