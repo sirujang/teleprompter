@@ -46,6 +46,31 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
 .val{min-width:44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .toggles{display:flex;flex-wrap:wrap;gap:10px}
 .chip{border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600}
+/* ---------- script bank ---------- */
+.bankBtn{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;text-align:left;
+  border:1px solid rgba(247,178,40,.45);background:linear-gradient(180deg,rgba(247,178,40,.12),rgba(247,178,40,.04));
+  border-radius:16px;padding:14px 16px;font-size:20px}
+.bankBtn b{display:block;font-size:16px;font-weight:800;color:var(--gold)}
+.bankBtn small{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.bankBtn > span:last-child{font-size:26px;color:var(--gold)}
+#bank{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;
+  padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.bankHead{max-width:560px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.bankTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bankTop h2{margin:0;font-size:20px;font-weight:800}
+.bankTop h2 span{color:var(--gold)}
+.close{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);font-size:18px}
+#bankQ{width:100%;border-radius:12px;border:1px solid var(--line);background:#17150f;color:var(--fg);padding:12px 14px;font:500 16px var(--font)}
+.bankTabs{display:flex;gap:8px;overflow-x:auto}
+.bankTabs .chip{padding:8px 14px;font-size:13px;white-space:nowrap}
+#bankList{flex:1;overflow-y:auto;max-width:560px;width:100%;margin:0 auto;padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;gap:8px}
+.sk{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#17150f}
+.sk:active{border-color:var(--gold)}
+.sk .no{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--gold)}
+.sk .no em{font-style:normal;color:#7fd3a4;margin-left:6px}
+.sk .tt{font-size:16px;font-weight:700;margin:2px 0 4px;line-height:1.3}
+.sk .hk{font-size:13px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bankEmpty{color:var(--muted);text-align:center;padding:30px 0}
 .chip.clear{padding:6px 12px;font-size:13px;margin-bottom:6px}
 .chip.clear.undo{border-color:var(--gold);color:var(--gold)}
 .chip[aria-pressed=true]{background:var(--gold);color:var(--gold-ink);border-color:var(--gold)}
@@ -147,6 +172,8 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
       </div>
     </div>
 
+    <button class="bankBtn" id="bankOpen" type="button"><span class="bi" aria-hidden="true">📚</span><span><b>Bank Skrip Emas</b><small id="bankCount">Pilih skrip, terus masuk prompter</small></span><span aria-hidden="true">›</span></button>
+
     <div>
       <div class="row"><label class="cap" for="script">Skrip</label><button class="chip clear" id="clearScript" type="button">✕ Padam skrip</button></div>
       <textarea id="script" spellcheck="false" placeholder="Tampal skrip di sini..."></textarea>
@@ -227,6 +254,16 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   </div>
 </section>
 
+<!-- ======================= Bank skrip ======================= -->
+<section id="bank" role="dialog" aria-modal="true" aria-labelledby="bankTitle" hidden>
+  <div class="bankHead">
+    <div class="bankTop"><h2 id="bankTitle">Bank Skrip <span>Emas</span></h2><button class="close" id="bankClose" type="button" aria-label="Tutup">✕</button></div>
+    <input id="bankQ" type="search" placeholder="Cari tajuk atau ayat..." autocomplete="off">
+    <div class="bankTabs" id="bankTabs" role="group" aria-label="Kumpulan skrip"></div>
+  </div>
+  <div id="bankList"></div>
+</section>
+
 <div id="toast" role="status" hidden></div>
 
 <script>
@@ -259,7 +296,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   function setScript(v) { ta.value = v; S.script = v; store.set('script', v); countWords(); }
   function clearLabel() {
     clr.classList.toggle('undo', undoText !== null);
-    clr.textContent = undoText !== null ? '↶ Batal padam' : '✕ Padam skrip';
+    clr.textContent = undoText !== null ? '↶ Skrip tadi' :'✕ Padam skrip';
     clr.hidden = undoText === null && !ta.value.trim();
   }
   clr.onclick = () => {
@@ -271,6 +308,62 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   ta.addEventListener('input', () => { S.script = ta.value; store.set('script', ta.value); countWords();
     if (undoText !== null && ta.value) { clearTimeout(undoT); undoText = null; } clearLabel(); });
   countWords(); clearLabel();
+
+  // ---------- script bank (skrip.json, copied from the "Senarai Skrip Emas" artifact) ----------
+  const bank = { list: null, tab: store.get('bankTab', 'Semua'), used: store.get('bankUsed', {}) };
+  const keyOf = x => x.k + ' ' + x.n;
+  async function loadBank() {
+    if (bank.list) return bank.list;
+    const r = await fetch('skrip.json', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('bank');
+    bank.list = (await r.json()).skrip; return bank.list;
+  }
+  function bankEl(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function renderBank() {
+    const L = bank.list || [], q = $('bankQ').value.trim().toLowerCase();
+    const tabs = ['Semua', ...new Set(L.map(x => x.k))];
+    if (!tabs.includes(bank.tab)) bank.tab = 'Semua';
+    const bt = $('bankTabs'); bt.textContent = '';
+    for (const t of tabs) {
+      const b = bankEl('button', 'chip', t + ' · ' + (t === 'Semua' ? L.length : L.filter(x => x.k === t).length));
+      b.type = 'button'; b.setAttribute('aria-pressed', String(t === bank.tab));
+      b.onclick = () => { bank.tab = t; store.set('bankTab', t); renderBank(); $('bankList').scrollTop = 0; };
+      bt.appendChild(b);
+    }
+    const box = $('bankList'); box.textContent = '';
+    const shown = L.filter(x => (bank.tab === 'Semua' || x.k === bank.tab) && (!q || (x.t + ' ' + x.s).toLowerCase().includes(q)));
+    for (const x of shown) {
+      const b = bankEl('button', 'sk'); b.type = 'button';
+      const no = bankEl('div', 'no', x.k.toUpperCase() + ' ' + String(x.n).padStart(2, '0'));
+      if (bank.used[keyOf(x)]) no.appendChild(bankEl('em', '', '✓ pernah dipilih'));
+      b.append(no, bankEl('div', 'tt', x.t), bankEl('div', 'hk', x.s.split('\n')[0]));
+      b.onclick = () => pickScript(x);
+      box.appendChild(b);
+    }
+    if (!shown.length) box.appendChild(bankEl('p', 'bankEmpty', 'Tiada skrip yang sepadan.'));
+  }
+  function pickScript(x) {
+    const old = ta.value;
+    setScript(x.s);
+    bank.used[keyOf(x)] = 1; store.set('bankUsed', bank.used);
+    closeBank();
+    // the old text can still be brought back with the same undo button as "Padam skrip"
+    if (old.trim() && old !== x.s) { clearTimeout(undoT); undoText = old; undoT = setTimeout(() => { undoText = null; clearLabel(); }, 6000); }
+    clearLabel(); ta.scrollTop = 0;
+    toast('Skrip dimasukkan: ' + x.t);
+  }
+  async function openBank() {
+    $('bank').hidden = false; document.body.style.overflow = 'hidden';
+    if (!bank.list) { $('bankList').textContent = ''; $('bankList').appendChild(bankEl('p', 'bankEmpty', 'Memuatkan skrip...')); }
+    try { await loadBank(); renderBank(); }
+    catch { $('bankList').textContent = ''; $('bankList').appendChild(bankEl('p', 'bankEmpty', 'Tak dapat muat bank skrip. Semak internet dan cuba lagi.')); }
+  }
+  function closeBank() { $('bank').hidden = true; document.body.style.overflow = ''; }
+  $('bankOpen').onclick = openBank;
+  $('bankClose').onclick = closeBank;
+  $('bankQ').addEventListener('input', renderBank);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('bank').hidden) closeBank(); });
+  loadBank().then(L => { $('bankCount').textContent = L.length + ' skrip · pilih, terus masuk prompter'; }).catch(() => {});
   function bindRange(id, key, out) {
     const el = $(id); el.value = S[key]; $(out).textContent = S[key];
     el.addEventListener('input', () => { S[key] = +el.value; $(out).textContent = el.value; store.set(key, S[key]); });
