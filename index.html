@@ -401,14 +401,47 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     const vs = c.captureStream(30);
     S.cropStop = () => { clearInterval(tid); vs.getTracks().forEach(t => t.stop()); c.remove(); };
     S.res = cw + '×' + ch;
-    return new MediaStream([...vs.getVideoTracks(), ...S.stream.getAudioTracks()]);
+    return vs.getVideoTracks()[0];
+  }
+  // Voice level: iPhones give a very quiet raw mic (about -50 LUFS in the first test). Lift the voice
+  // before it is encoded: follow the speech peaks, aim them at about -6 dBFS (at most +30 dB), never
+  // lift pauses (the level only follows sound close to the current speech level), and a limiter
+  // stops clipping. Phones that are already loud get gain 1.
+  function boostAudio() {
+    const tr = S.stream && S.stream.getAudioTracks()[0], ac = S.ac;
+    if (!tr || !ac) return null;
+    try {
+      const src = ac.createMediaStreamSource(new MediaStream([tr]));
+      const an = ac.createAnalyser(); an.fftSize = 2048; const buf = new Float32Array(an.fftSize);
+      const gain = ac.createGain(); gain.gain.value = 1;
+      const lim = ac.createDynamicsCompressor();
+      lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.12;
+      const dst = ac.createMediaStreamDestination();
+      src.connect(an); src.connect(gain); gain.connect(lim); lim.connect(dst);
+      let lvl = 0.06;   // running estimate of the speech peak (linear, 1 = full scale)
+      const tid = setInterval(() => {
+        an.getFloatTimeDomainData(buf); let pk = 0;
+        for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > pk) pk = a; }
+        if (pk > lvl) lvl = lvl * 0.5 + pk * 0.5;              // louder: follow quickly
+        else if (pk > lvl * 0.25) lvl = Math.max(0.008, lvl * 0.96);   // quieter speech: settle down
+        const want = Math.min(32, Math.max(1, 0.5 / lvl));
+        gain.gain.setTargetAtTime(want, ac.currentTime, 0.35);
+        S.gainNow = want;
+      }, 100);
+      S.audioStop = () => { clearInterval(tid); try { src.disconnect(); lim.disconnect(); } catch {} };
+      return dst.stream.getAudioTracks()[0];
+    } catch { return null; }
   }
   async function startRec() {
+    // the audio context must start inside the tap itself (iPhone rule), before anything is awaited
+    try { S.ac = S.ac || new (window.AudioContext || window.webkitAudioContext)(); S.ac.resume(); } catch { S.ac = null; }
     if (!S.stream) { const ok = await openCamera(); if (!ok) return; }
     $('rec').disabled = true;
     await countdown();
     [S.mime, S.ext] = pickMime(); S.chunks = [];
-    const recStream = cropStream() || S.stream;   // 9:16 file; the raw 4:3 camera only if this browser cannot crop
+    const vtrack = cropStream() || S.stream.getVideoTracks()[0];   // 9:16 file; the raw 4:3 camera only if this browser cannot crop
+    const atrack = boostAudio() || S.stream.getAudioTracks()[0];   // lifted voice; the raw mic if Web Audio is missing
+    const recStream = new MediaStream([vtrack, atrack].filter(Boolean));
     try {
       S.rec = new MediaRecorder(recStream, { mimeType: S.mime || undefined, videoBitsPerSecond: 12_000_000, audioBitsPerSecond: 192_000 });
     } catch { S.rec = new MediaRecorder(recStream); }
@@ -431,6 +464,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     $('rec').classList.remove('on'); $('rec').setAttribute('aria-label', 'Mula rakam');
     $('topbar').hidden = true; $('back').disabled = false; $('back').style.opacity = 1;
     S.rec = null; if (S.cropStop) { S.cropStop(); S.cropStop = null; }
+    if (S.audioStop) { S.audioStop(); S.audioStop = null; }
     const blob = new Blob(S.chunks, { type: S.mime.split(';')[0] || 'video/mp4' }); S.chunks = [];
     stopCamera(); wakeOff();
     const at = Date.now();
