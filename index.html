@@ -49,8 +49,10 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
 
 /* ---------- studio (camera) ---------- */
 #studio{position:fixed;inset:0;background:#000}
-#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-#cam.mirror{transform:scaleX(-1)}
+/* preview = a 9:16 box like CapCut (the final TikTok frame), black above and below on tall phones */
+#cam{position:absolute;left:50%;top:50%;width:min(100%,calc(100vh * 9 / 16));width:min(100%,calc(100dvh * 9 / 16));
+  height:auto;aspect-ratio:9/16;object-fit:cover;background:#000;transform:translate(-50%,-50%)}
+#cam.mirror{transform:translate(-50%,-50%) scaleX(-1)}
 #prompter{position:absolute;left:0;right:0;top:0;height:46%;overflow:hidden;
   padding-top:env(safe-area-inset-top,0px);
   background:linear-gradient(to bottom,rgba(0,0,0,.78) 0%,rgba(0,0,0,.62) 72%,rgba(0,0,0,0) 100%);
@@ -206,6 +208,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
       <button class="secondary" id="again" type="button">Rakam semula</button>
       <button class="secondary" id="toScript" type="button">Tukar skrip</button>
     </div>
+    <p class="sub" id="wideHint" style="margin:0" hidden>Fail ini simpan gambar penuh kamera (sedikit lebih lebar daripada skrin rakam). GAC akan potong ke 9:16 ikut muka masa edit.</p>
     <p class="sub" id="shareHint" style="margin:0">Dalam menu kongsi, pilih <b>Simpan Video</b> untuk masuk Galeri, atau terus hantar ke WhatsApp, AirDrop atau Google Drive.</p>
   </div>
 </section>
@@ -330,7 +333,10 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   async function openCamera() {
     $('camErr').hidden = true;
     stopCamera();
-    const video = { facingMode: S.back ? 'environment' : 'user', width: { ideal: 1920 }, height: { ideal: 1920 }, frameRate: { ideal: 30, max: 30 } };
+    // ask for the whole sensor (4:3, 1920x1440 -> 1440x1920 held upright): the widest view, like CapCut.
+    // 16:9 video modes cut the sides of the front camera and look zoomed in. The preview shows the 9:16 middle;
+    // the file keeps the full picture so GAC can crop 9:16 around the face.
+    const video = { facingMode: S.back ? 'environment' : 'user', width: { ideal: 1920 }, height: { ideal: 1440 }, aspectRatio: { ideal: 4 / 3 }, frameRate: { ideal: 30, max: 30 } };
     // raw voice: the browser's echo cancelling / noise gate / auto volume make speech sound processed
     const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 };
     try {
@@ -425,6 +431,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     const pv = $('playback'); pv.src = S.url;
     $('fDur').textContent = fmtTime(dur); $('fSize').textContent = fmtMB(blob.size);
     $('fFmt').textContent = S.ext.toUpperCase(); $('fRes').textContent = S.res || '–'; $('fResWrap').hidden = !S.res;
+    const m = /(\d+)×(\d+)/.exec(S.res || ''); $('wideHint').hidden = !(m && +m[1] / +m[2] > 0.6);   // wider than 9:16
     const file = new File([blob], fileName(at), { type: blob.type });
     const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
     $('share').hidden = !canShare; $('shareHint').hidden = !canShare;
