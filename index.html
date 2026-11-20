@@ -154,7 +154,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   <div class="wrap">
     <div class="brand">
       <span class="badge" aria-hidden="true">SU</span>
-      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · <span style="color:var(--muted);opacity:.7">v1.3</span></div></div>
+      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · <span style="color:var(--muted);opacity:.7">v1.4</span></div></div>
     </div>
     <p class="sub">Tampal skrip, tekan Mula. Skrip bergulir di atas skrin, dekat kamera, jadi mata nampak pandang penonton.</p>
 
@@ -488,6 +488,9 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     if (first && (st.width !== first.width || st.height !== first.height)) {
       try { await vt.applyConstraints({ width: { exact: first.width }, height: { exact: first.height }, frameRate: { ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
     }
+    // v1.4: keep the camera at 24-30 fps. In a dim room an iPhone may slow the camera down for a brighter
+    // picture (choppy hands and lips); a slightly darker picture is fixed in the edit, missing frames are not.
+    try { await vt.applyConstraints({ ...(st.width ? { width: { exact: st.width }, height: { exact: st.height } } : {}), frameRate: { min: 24, ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
     if (st.width && st.height) { S.firstCam = S.firstCam || {}; S.firstCam[S.back ? 'b' : 'f'] = S.firstCam[S.back ? 'b' : 'f'] || { width: st.width, height: st.height }; }
     S.res = st.width && st.height ? st.width + '×' + st.height : '';
     return true;
@@ -532,14 +535,28 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     const c = document.createElement('canvas'); c.width = cw; c.height = ch;
     c.style.cssText = 'position:fixed;left:-10000px;top:0;width:2px;height:2px;pointer-events:none';
     document.body.appendChild(c);
-    const g = c.getContext('2d', { alpha: false }), sx = (vw - cw) / 2, sy = (vh - ch) / 2;
-    const draw = () => g.drawImage(cam, sx, sy, cw, ch, 0, 0, cw, ch);
-    // a steady 30 fps timer: does not depend on screen animation or video-frame callbacks
-    draw(); const tid = setInterval(draw, 1000 / 30);
-    const vs = c.captureStream(30);
-    S.cropStop = () => { clearInterval(tid); vs.getTracks().forEach(t => t.stop()); c.remove(); };
+    const g = c.getContext('2d', { alpha: false, desynchronized: true }), sx = (vw - cw) / 2, sy = (vh - ch) / 2;
+    // v1.4: the old 30 fps setInterval + captureStream(30) gave only 16.7 fps on a 110 s iPhone take.
+    // Now every NEW camera frame is drawn once (requestVideoFrameCallback) and pushed into the file by hand
+    // (captureStream(0) + requestFrame), so the file gets the camera's own rate. A timer is only the fallback.
+    const vs = c.captureStream(0), vtr = vs.getVideoTracks()[0];
+    const push = () => { if (vtr.requestFrame) vtr.requestFrame(); };
+    let on = true, n = 0, tid = 0, vid = 0;
+    const draw = () => { g.drawImage(cam, sx, sy, cw, ch, 0, 0, cw, ch); push(); n++; };
+    if (cam.requestVideoFrameCallback && vtr.requestFrame) {
+      const loop = () => { if (!on) return; draw(); vid = cam.requestVideoFrameCallback(loop); };
+      vid = cam.requestVideoFrameCallback(loop);
+      // if the camera stalls (no new frame for 70 ms) still draw, so the file never freezes
+      let lastN = -1; tid = setInterval(() => { if (n === lastN) draw(); lastN = n; }, 70);
+    } else {
+      const vs2 = vtr.requestFrame ? null : c.captureStream(30);   // old browsers: timer + automatic capture
+      draw(); tid = setInterval(draw, 1000 / 30);
+      if (vs2) { vs.getTracks().forEach(t => t.stop()); S.fpsCount = () => n; S.cropStop = () => { clearInterval(tid); vs2.getTracks().forEach(t => t.stop()); c.remove(); }; S.res = cw + '×' + ch; return vs2.getVideoTracks()[0]; }
+    }
+    S.fpsCount = () => n;
+    S.cropStop = () => { on = false; clearInterval(tid); try { cam.cancelVideoFrameCallback?.(vid); } catch {} vs.getTracks().forEach(t => t.stop()); c.remove(); };
     S.res = cw + '×' + ch;
-    return vs.getVideoTracks()[0];
+    return vtr;
   }
   // Voice level: iPhones give a very quiet raw mic (about -50 LUFS in the first test). Lift the voice
   // before it is encoded: follow the speech peaks, aim them at about -6 dBFS (at most +30 dB), never
@@ -552,21 +569,29 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
       const src = ac.createMediaStreamSource(new MediaStream([tr]));
       const an = ac.createAnalyser(); an.fftSize = 2048; const buf = new Float32Array(an.fftSize);
       const gain = ac.createGain(); gain.gain.value = 1;
-      const lim = ac.createDynamicsCompressor();
-      lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.12;
+      // v1.4: the old chain (peaks aimed at -6 dBFS, compressor at -4) clipped: +2.7 dBFS peaks, about 17% of a
+      // 110 s take touched full scale. Now: peaks aimed at -12 dBFS, a compressor from -14 dBFS, and a soft
+      // clipper last that can never output more than -1.5 dBFS. GAC/edit-video normalise the loudness later.
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.knee.value = 6; comp.ratio.value = 12; comp.attack.value = 0.001; comp.release.value = 0.15;
+      const clip = ac.createWaveShaper(), K = 0.84, N = 2048, curve = new Float32Array(N);
+      for (let i = 0; i < N; i++) { const x = i / (N - 1) * 2 - 1; curve[i] = K * Math.tanh(x * 2 / K); }   // input ±0.5 -> ±0.84 max
+      clip.curve = curve; clip.oversample = '4x';
+      const pre = ac.createGain(); pre.gain.value = 0.5;   // the curve's range is ±1 in: halve so peaks up to +6 dBFS are shaped, not cut
       const dst = ac.createMediaStreamDestination();
-      src.connect(an); src.connect(gain); gain.connect(lim); lim.connect(dst);
+      src.connect(an); src.connect(gain); gain.connect(comp); comp.connect(pre); pre.connect(clip); clip.connect(dst);
       let lvl = 0.06;   // running estimate of the speech peak (linear, 1 = full scale)
       const tid = setInterval(() => {
         an.getFloatTimeDomainData(buf); let pk = 0;
         for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > pk) pk = a; }
-        if (pk > lvl) lvl = lvl * 0.5 + pk * 0.5;              // louder: follow quickly
-        else if (pk > lvl * 0.25) lvl = Math.max(0.008, lvl * 0.96);   // quieter speech: settle down
-        const want = Math.min(32, Math.max(1, 0.5 / lvl));
-        gain.gain.setTargetAtTime(want, ac.currentTime, 0.35);
+        if (pk > lvl) lvl = pk;                                  // louder: follow at once
+        else if (pk > lvl * 0.25) lvl = Math.max(0.008, lvl * 0.97);   // quieter speech: settle down slowly
+        const want = Math.min(32, Math.max(1, 0.25 / lvl));
+        // turning DOWN is fast (no loud burst), turning UP is slow (no pumping in pauses)
+        gain.gain.setTargetAtTime(want, ac.currentTime, want < gain.gain.value ? 0.03 : 0.5);
         S.gainNow = want;
-      }, 100);
-      S.audioStop = () => { clearInterval(tid); try { src.disconnect(); lim.disconnect(); } catch {} };
+      }, 50);
+      S.audioStop = () => { clearInterval(tid); try { src.disconnect(); clip.disconnect(); } catch {} };
       return dst.stream.getAudioTracks()[0];
     } catch { return null; }
   }
@@ -601,7 +626,10 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     clearInterval(S.timerId); stopScroll();
     $('rec').classList.remove('on'); $('rec').setAttribute('aria-label', 'Mula rakam');
     $('topbar').hidden = true; $('back').disabled = false; $('back').style.opacity = 1;
-    S.rec = null; if (S.cropStop) { S.cropStop(); S.cropStop = null; }
+    S.rec = null;
+    // frames actually drawn per second: shown on the review screen so a choppy take is spotted at once
+    if (S.fpsCount && dur > 1) { S.res = S.res.replace(/ · .*$/, '') + ' · ' + Math.round(S.fpsCount() / dur) + ' fps'; S.fpsCount = null; }
+    if (S.cropStop) { S.cropStop(); S.cropStop = null; }
     if (S.audioStop) { S.audioStop(); S.audioStop = null; }
     const blob = new Blob(S.chunks, { type: S.mime.split(';')[0] || 'video/mp4' }); S.chunks = [];
     // keep the camera open for "Rakam semula": an iPhone that reopens the camera can pick a different,
