@@ -452,8 +452,14 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   $('restart').onclick = () => { S.y = 0; applyY(); };
 
   // ---------- camera ----------
+  const camLive = () => !!(S.stream && S.stream.getVideoTracks().some(t => t.readyState === 'live'));
   async function openCamera() {
     $('camErr').hidden = true;
+    if (camLive() && S.streamFacing === S.back) {   // same camera still running: reuse it, framing stays the same
+      const cam = $('cam'); if (cam.srcObject !== S.stream) cam.srcObject = S.stream;
+      try { await cam.play(); } catch {}
+      return true;
+    }
     stopCamera();
     // ask for the whole sensor (4:3, 1920x1440 -> 1440x1920 held upright): the widest view, like CapCut.
     // 16:9 video modes cut the sides of the front camera and look zoomed in. The preview shows the 9:16 middle;
@@ -473,7 +479,17 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     }
     const cam = $('cam'); cam.srcObject = S.stream; cam.classList.toggle('mirror', S.mirror && !S.back);
     try { await cam.play(); } catch {}
-    const st = S.stream.getVideoTracks()[0].getSettings(); S.res = st.width && st.height ? st.width + '×' + st.height : '';
+    S.streamFacing = S.back;
+    const vt = S.stream.getVideoTracks()[0];
+    let st = vt.getSettings();
+    // if the camera came back in another mode than the first time (e.g. after the page was in the background),
+    // ask for the first mode again so every take has the same view
+    const first = S.firstCam && S.firstCam[S.back ? 'b' : 'f'];
+    if (first && (st.width !== first.width || st.height !== first.height)) {
+      try { await vt.applyConstraints({ width: { exact: first.width }, height: { exact: first.height }, frameRate: { ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
+    }
+    if (st.width && st.height) { S.firstCam = S.firstCam || {}; S.firstCam[S.back ? 'b' : 'f'] = S.firstCam[S.back ? 'b' : 'f'] || { width: st.width, height: st.height }; }
+    S.res = st.width && st.height ? st.width + '×' + st.height : '';
     return true;
   }
   function stopCamera() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } }
@@ -588,13 +604,18 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     S.rec = null; if (S.cropStop) { S.cropStop(); S.cropStop = null; }
     if (S.audioStop) { S.audioStop(); S.audioStop = null; }
     const blob = new Blob(S.chunks, { type: S.mime.split(';')[0] || 'video/mp4' }); S.chunks = [];
-    stopCamera(); wakeOff();
+    // keep the camera open for "Rakam semula": an iPhone that reopens the camera can pick a different,
+    // wider camera mode (user saw more of the room on the 2nd take until he refreshed). Same stream = same framing.
+    wakeOff();
     const at = Date.now();
     idb.put({ blob, dur, at, mime: S.mime, ext: S.ext, res: S.res });
     openReview(blob, dur, at);
   }
   $('rec').onclick = () => { if (S.rec) stopRec(); else startRec(); };
-  document.addEventListener('visibilitychange', () => { if (document.hidden && S.rec) { stopRec(); toast('Rakaman dihentikan sebab skrin bertukar app.'); } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && S.rec) { stopRec(); toast('Rakaman dihentikan sebab skrin bertukar app.'); }
+    else if (document.hidden && !$('review').hidden) stopCamera();   // left the app from the review screen: free the camera
+  });
 
   // ---------- review / save ----------
   function fileName(at) {
@@ -776,7 +797,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     }
   };
   $('again').onclick = async () => { $('playback').pause(); show('studio'); layoutPrompter(); await openCamera(); wakeOn(); };
-  $('toScript').onclick = () => { $('playback').pause(); show('setup'); };
+  $('toScript').onclick = () => { $('playback').pause(); stopCamera(); show('setup'); };
 })();
 </script>
 </body>
