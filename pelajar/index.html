@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0d0c0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SU Prompter Pelajar">
+<title>SU Prompter Pelajar</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f7b228'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Arial,sans-serif' font-weight='900' font-size='30' fill='%23281a00'%3ESU%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap">
+<style>
+/* Camera-first dark studio: the picture fills the screen, the script sits at the top next to the lens,
+   controls stay at the thumb's reach at the bottom. One accent (gold), red only for "recording". */
+:root{
+  --bg:#0d0c0a; --panel:rgba(20,18,15,.82); --line:rgba(255,255,255,.14);
+  --fg:#f6f3ee; --muted:#a8a29a; --gold:#f7b228; --gold-ink:#281a00; --rec:#ff3b3b;
+  --font:"Montserrat",-apple-system,"Avenir Next","Segoe UI",Roboto,Arial,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- setup screen ---------- */
+#setup{position:fixed;inset:0;overflow-y:auto;
+  padding:calc(env(safe-area-inset-top,0px) + 20px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(16px,env(safe-area-inset-left,0px))}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.01em}
+h1 span{color:var(--gold)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand h1{line-height:1.05}
+.badge{flex:none;width:46px;height:46px;border-radius:12px;background:var(--gold);color:var(--gold-ink);
+  display:grid;place-items:center;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.by{margin-top:3px;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.sub{margin:-10px 0 0;color:var(--muted);font-size:14px;line-height:1.5}
+label.cap{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1px solid var(--line);
+  background:#17150f;color:var(--fg);padding:16px;font:500 17px/1.55 var(--font)}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-top:6px}
+.row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+.row input[type=range]{width:100%;accent-color:var(--gold)}
+.val{min-width:44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.toggles{display:flex;flex-wrap:wrap;gap:10px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600}
+/* ---------- script bank ---------- */
+.bankBtn{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;text-align:left;
+  border:1px solid rgba(247,178,40,.45);background:linear-gradient(180deg,rgba(247,178,40,.12),rgba(247,178,40,.04));
+  border-radius:16px;padding:14px 16px;font-size:20px}
+.bankBtn b{display:block;font-size:16px;font-weight:800;color:var(--gold)}
+.bankBtn small{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.bankBtn > span:last-child{font-size:26px;color:var(--gold)}
+#bank{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;
+  padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.bankHead{max-width:560px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.bankTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bankTop h2{margin:0;font-size:20px;font-weight:800}
+.bankTop h2 span{color:var(--gold)}
+.close{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);font-size:18px}
+#bankQ{width:100%;border-radius:12px;border:1px solid var(--line);background:#17150f;color:var(--fg);padding:12px 14px;font:500 16px var(--font)}
+.bankTabs{display:flex;gap:8px;overflow-x:auto}
+.bankTabs .chip{padding:8px 14px;font-size:13px;white-space:nowrap}
+#bankList{flex:1;overflow-y:auto;max-width:560px;width:100%;margin:0 auto;padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;gap:8px}
+.sk{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#17150f}
+.sk:active{border-color:var(--gold)}
+.sk .no{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--gold)}
+.sk .no em{font-style:normal;color:#7fd3a4;margin-left:6px}
+.sk .tt{font-size:16px;font-weight:700;margin:2px 0 4px;line-height:1.3}
+.sk .hk{font-size:13px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mine{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:stretch}
+.mine .del{border:1px solid var(--line);border-radius:14px;background:#17150f;color:var(--muted);width:46px;font-size:16px}
+.mine .del:active{border-color:#e0664f;color:#e0664f}
+.chips{display:flex;gap:6px}
+.chips .chip{white-space:nowrap}
+.chip.save{padding:6px 12px;font-size:13px;margin-bottom:6px;border-color:var(--gold);color:var(--gold)}
+.bankEmpty{color:var(--muted);text-align:center;padding:30px 0}
+.chip.clear{padding:6px 12px;font-size:13px;margin-bottom:6px}
+.chip.clear.undo{border-color:var(--gold);color:var(--gold)}
+.chip[aria-pressed=true]{background:var(--gold);color:var(--gold-ink);border-color:var(--gold)}
+.primary{background:var(--gold);color:var(--gold-ink);border-radius:16px;padding:18px;font-size:18px;font-weight:800}
+.secondary{border:1px solid var(--line);border-radius:14px;padding:14px;font-size:15px;font-weight:700}
+.note{border:1px solid var(--line);border-radius:14px;padding:14px 16px;font-size:14px;line-height:1.5;background:#17150f}
+.note b{color:var(--gold)}
+.warn{border-color:rgba(255,59,59,.5)}
+.warn b{color:#ff8a8a}
+
+/* ---------- studio (camera) ---------- */
+#studio{position:fixed;inset:0;background:#000}
+/* preview = a 9:16 box like CapCut (the final TikTok frame), black above and below on tall phones */
+#cam{position:absolute;left:50%;top:50%;width:min(100%,calc(100vh * 9 / 16));width:min(100%,calc(100dvh * 9 / 16));
+  height:auto;aspect-ratio:9/16;object-fit:cover;background:#000;transform:translate(-50%,-50%)}
+#cam.mirror{transform:translate(-50%,-50%) scaleX(-1)}
+#prompter{position:absolute;left:0;right:0;top:0;height:46%;overflow:hidden;
+  padding-top:env(safe-area-inset-top,0px);
+  background:linear-gradient(to bottom,rgba(0,0,0,.78) 0%,rgba(0,0,0,.62) 72%,rgba(0,0,0,0) 100%);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 9%,#000 80%,transparent 100%);
+          mask-image:linear-gradient(to bottom,transparent 0,#000 9%,#000 80%,transparent 100%)}
+#scroller{position:absolute;left:0;right:0;top:0;will-change:transform;
+  padding:0 max(22px,env(safe-area-inset-right,0px)) 0 max(22px,env(safe-area-inset-left,0px))}
+#scroller p{margin:0 0 .7em;font-weight:700;line-height:1.38;text-align:center;text-wrap:pretty;
+  text-shadow:0 2px 8px rgba(0,0,0,.6)}
+#scroller.flip{transform-origin:center}
+/* reading line: two small gold arrows at the edges, so no line crosses the words */
+#readline{position:absolute;left:4px;right:4px;height:0;pointer-events:none}
+#readline::before,#readline::after{content:"";position:absolute;top:-9px;border:9px solid transparent}
+#readline::before{left:0;border-left-color:var(--gold)}
+#readline::after{right:0;border-right-color:var(--gold)}
+#pausedTag{position:absolute;right:max(14px,env(safe-area-inset-right,0px));bottom:12px;font-size:12px;font-weight:800;
+  letter-spacing:.08em;background:var(--gold);color:var(--gold-ink);border-radius:999px;padding:6px 10px}
+
+#topbar{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 128px);display:flex;justify-content:center;pointer-events:none}
+#timer{display:inline-flex;align-items:center;gap:8px;background:rgba(0,0,0,.55);border-radius:999px;padding:8px 14px;
+  font-weight:800;font-variant-numeric:tabular-nums;font-size:16px}
+#timer i{width:10px;height:10px;border-radius:50%;background:var(--rec);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.2}}
+
+#controls{position:absolute;left:0;right:0;bottom:0;
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 18px) max(16px,env(safe-area-inset-left,0px));
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+  background:linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,0))}
+.side{display:flex;gap:10px;align-items:center}
+.side.right{justify-content:flex-end}
+.round{width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.5);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:20px;font-weight:800}
+.round small{font-size:11px;display:block;font-weight:700;color:var(--muted);margin-top:-2px}
+#rec{width:78px;height:78px;border-radius:50%;border:5px solid #fff;display:grid;place-items:center;background:transparent}
+#rec span{width:58px;height:58px;border-radius:50%;background:var(--rec);transition:all .2s ease}
+#rec.on span{width:30px;height:30px;border-radius:8px}
+/* text size: a small vertical pill on the right edge, under the script */
+#sizeBar{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:calc(46% + 10px);display:flex;flex-direction:column;gap:8px;align-items:center;
+  background:rgba(0,0,0,.45);border:1px solid var(--line);border-radius:999px;padding:6px}
+#sizeBar button{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800}
+#sizeBar .big{font-size:22px}#sizeBar .small{font-size:15px}
+#sizeNow{font-size:12px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+#speedVal{min-width:40px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums;font-size:15px}
+#count{position:absolute;inset:0;display:grid;place-items:center;font-size:150px;font-weight:800;color:#fff;
+  text-shadow:0 6px 30px rgba(0,0,0,.6);pointer-events:none}
+#camErr{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;background:var(--bg)}
+#camErr div{max-width:420px;display:flex;flex-direction:column;gap:14px;font-size:15px;line-height:1.5}
+
+/* ---------- review ---------- */
+#review{position:fixed;inset:0;background:var(--bg);overflow-y:auto;
+  padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 20px) max(16px,env(safe-area-inset-left,0px))}
+#review video{width:100%;max-height:58vh;border-radius:18px;background:#000;display:block}
+.facts{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.facts b{color:var(--fg);font-variant-numeric:tabular-nums}
+.btns{display:grid;gap:10px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translateX(-50%);
+  background:#232019;border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:14px;max-width:90vw;z-index:20}
+@media (prefers-reduced-motion:reduce){#timer i{animation:none}#rec span{transition:none}}
+</style>
+</head>
+<body>
+
+<!-- ======================= 1. Skrip ======================= -->
+<section id="setup" aria-label="Sediakan skrip">
+  <div class="wrap">
+    <div class="brand">
+      <span class="badge" aria-hidden="true">SU</span>
+      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · Pelajar <span style="color:var(--muted);opacity:.7">v1.0</span></div></div>
+    </div>
+    <p class="sub">Tampal skrip, tekan Mula. Skrip bergulir di atas skrin, dekat kamera, jadi mata nampak pandang penonton.</p>
+
+    <div id="inapp" class="note warn" hidden>
+      <b>Buka dalam Safari atau Chrome.</b> Pautan ini dibuka dalam app (WhatsApp, Instagram, TikTok atau Facebook), dan kamera biasanya tak jalan di sini. Tekan ⋯ atau ikon kongsi, kemudian pilih "Buka dalam Safari" / "Open in Chrome".
+    </div>
+    <div id="nosupport" class="note warn" hidden>
+      <b>Browser ini tak boleh merakam.</b> Cuba Safari (iPhone) atau Chrome (Android/laptop) versi terkini.
+    </div>
+    <div id="restore" class="note" hidden>
+      <b>Ada rakaman yang belum disimpan</b> (<span id="restoreInfo"></span>).
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button class="secondary" id="restoreBtn" type="button">Buka rakaman itu</button>
+        <button class="secondary" id="restoreDrop" type="button">Buang</button>
+      </div>
+    </div>
+
+    <button class="bankBtn" id="bankOpen" type="button"><span class="bi" aria-hidden="true">📝</span><span><b>Skrip Saya</b><small id="bankCount">Tampal skrip, simpan, guna semula</small></span><span aria-hidden="true">›</span></button>
+
+    <div>
+      <div class="row"><label class="cap" for="script">Skrip</label><span class="chips"><button class="chip save" id="saveScript" type="button" hidden>💾 Simpan</button><button class="chip clear" id="clearScript" type="button">✕ Padam skrip</button></span></div>
+      <textarea id="script" spellcheck="false" placeholder="Tampal skrip di sini..."></textarea>
+      <div class="meta"><span id="words">0 perkataan</span><span id="est">± 0:00</span></div>
+    </div>
+
+    <div>
+      <div class="row"><label class="cap" for="size">Saiz tulisan</label><span class="val" id="sizeVal">34</span></div>
+      <div class="row" style="grid-template-columns:1fr"><input id="size" type="range" min="22" max="60" step="1" value="34"></div>
+    </div>
+    <div>
+      <div class="row"><label class="cap" for="speed">Laju gulir</label><span class="val" id="speedSetVal">4</span></div>
+      <div class="row" style="grid-template-columns:1fr"><input id="speed" type="range" min="1" max="10" step="1" value="4"></div>
+    </div>
+
+    <div class="toggles" role="group" aria-label="Pilihan">
+      <button class="chip" id="optCount" type="button" aria-pressed="true">Kiraan 3-2-1</button>
+      <button class="chip" id="optMirror" type="button" aria-pressed="true">Cermin skrin</button>
+      <button class="chip" id="optCam" type="button" aria-pressed="false">Kamera belakang</button>
+    </div>
+
+    <button class="primary" id="start" type="button">Mula</button>
+    <p class="sub" style="margin:0">Video disimpan dalam telefon anda sahaja. Tiada apa dihantar ke mana-mana sehingga anda tekan Simpan atau Kongsi.</p>
+  </div>
+</section>
+
+<!-- ======================= 2. Studio ======================= -->
+<section id="studio" aria-label="Rakam" hidden>
+  <video id="cam" playsinline muted autoplay class="mirror"></video>
+  <div id="prompter" aria-live="off">
+    <div id="scroller"></div>
+    <div id="readline"></div>
+    <div id="pausedTag" hidden>BERHENTI · TEKAN UNTUK SAMBUNG</div>
+  </div>
+  <div id="sizeBar" role="group" aria-label="Saiz tulisan">
+    <button class="big" id="bigger" type="button" aria-label="Besarkan tulisan">A+</button>
+    <span id="sizeNow">34</span>
+    <button class="small" id="smaller" type="button" aria-label="Kecilkan tulisan">A−</button>
+  </div>
+  <div id="topbar" hidden><div id="timer"><i></i><span id="time">0:00</span></div></div>
+  <div id="count" hidden></div>
+  <div id="controls">
+    <div class="side">
+      <button class="round" id="back" type="button" aria-label="Kembali ke skrip">✕</button>
+      <button class="round" id="restart" type="button" aria-label="Gulir semula dari awal">↺</button>
+    </div>
+    <button id="rec" type="button" aria-label="Mula rakam"><span></span></button>
+    <div class="side right">
+      <button class="round" id="slower" type="button" aria-label="Perlahan">−</button>
+      <span id="speedVal">4</span>
+      <button class="round" id="faster" type="button" aria-label="Laju">+</button>
+    </div>
+  </div>
+  <div id="camErr" hidden><div>
+    <b style="font-size:18px">Kamera tak dapat dibuka</b>
+    <span id="camErrMsg"></span>
+    <button class="primary" id="camRetry" type="button">Cuba lagi</button>
+    <button class="secondary" id="camBack" type="button">Kembali ke skrip</button>
+  </div></div>
+</section>
+
+<!-- ======================= 3. Semak & simpan ======================= -->
+<section id="review" aria-label="Simpan rakaman" hidden>
+  <div class="wrap">
+    <h1>Rakaman <span>siap</span></h1>
+    <video id="playback" playsinline controls></video>
+    <div class="facts"><span>Tempoh <b id="fDur">0:00</b></span><span>Saiz <b id="fSize">0 MB</b></span><span>Format <b id="fFmt">MP4</b></span><span id="fResWrap">Resolusi <b id="fRes">–</b></span></div>
+    <div class="btns">
+      <button class="primary" id="share" type="button">Simpan ke Galeri / Kongsi</button>
+      <button class="secondary" id="download" type="button">Muat turun fail</button>
+      <button class="secondary" id="small" type="button" hidden>Buat fail kecil untuk chat</button>
+      <p class="sub" id="smallInfo" style="margin:0" hidden></p>
+      <button class="secondary" id="again" type="button">Rakam semula</button>
+      <button class="secondary" id="toScript" type="button">Tukar skrip</button>
+    </div>
+    <p class="sub" id="wideHint" style="margin:0" hidden>Browser ini tak dapat potong 9:16 semasa merakam, jadi fail simpan gambar penuh kamera (lebih lebar). GAC akan potong ke 9:16 ikut muka masa edit.</p>
+    <p class="sub" id="shareHint" style="margin:0">Dalam menu kongsi, pilih <b>Simpan Video</b> untuk masuk Galeri, atau terus hantar ke WhatsApp, AirDrop atau Google Drive.</p>
+  </div>
+</section>
+
+<!-- ======================= Bank skrip ======================= -->
+<section id="bank" role="dialog" aria-modal="true" aria-labelledby="bankTitle" hidden>
+  <div class="bankHead">
+    <div class="bankTop"><h2 id="bankTitle">Skrip <span>Saya</span></h2><button class="close" id="bankClose" type="button" aria-label="Tutup">✕</button></div>
+    <input id="bankQ" type="search" placeholder="Cari tajuk atau ayat..." autocomplete="off">
+    <p class="bankEmpty" id="mineHelp" style="padding:0;text-align:left;font-size:13px">Tampal skrip dalam kotak Skrip, tekan <b style="color:var(--gold)">💾 Simpan</b>. Skrip disimpan dalam telefon ini sahaja.</p>
+  </div>
+  <div id="bankList"></div>
+</section>
+
+<div id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('sp_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('sp_' + k, JSON.stringify(v)); } catch {} }
+  };
+  const SAMPLE = 'Kumpul gold bar 10 gram boleh capai matlamat apa?\n\nSave dan share dulu video ini untuk rujukan anda di masa akan datang.\n\nNilai 10 gram hari ini sekitar RM6,000. Nampak kecil, tapi kalau dikumpul boleh capai banyak matlamat.\n\nKomen EMAS kalau nak tahu cara mula.';
+
+  // ---------- state ----------
+  const S = {
+    script: store.get('script', SAMPLE), size: store.get('size', 34), speed: store.get('speed', 4),
+    countdown: store.get('countdown', true), mirror: store.get('mirror', true), back: store.get('back', false),
+    stream: null, rec: null, chunks: [], mime: '', ext: 'mp4', blob: null, url: null,
+    y: 0, running: false, paused: false, last: 0, t0: 0, timerId: 0, wake: null, res: ''
+  };
+
+  // ---------- setup screen ----------
+  const ta = $('script'); ta.value = S.script;
+  function countWords() {
+    const n = (ta.value.trim().match(/\S+/g) || []).length;
+    $('words').textContent = n + ' perkataan';
+    const sec = Math.round(n / 2.4);   // Malay talking pace, about 145 words a minute
+    $('est').textContent = '± ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ' bila dibaca';
+  }
+  // clear the old script in one tap; for 6 s the same button brings it back (in case of a mis-tap)
+  const clr = $('clearScript'); let undoText = null, undoT = 0;
+  function setScript(v) { ta.value = v; S.script = v; store.set('script', v); countWords(); }
+  function clearLabel() {
+    clr.classList.toggle('undo', undoText !== null);
+    clr.textContent = undoText !== null ? '↶ Skrip tadi' :'✕ Padam skrip';
+    clr.hidden = undoText === null && !ta.value.trim();
+  }
+  clr.onclick = () => {
+    clearTimeout(undoT);
+    if (undoText !== null) { setScript(undoText); undoText = null; }
+    else { undoText = ta.value; setScript(''); ta.focus(); undoT = setTimeout(() => { undoText = null; clearLabel(); }, 6000); }
+    clearLabel();
+  };
+  ta.addEventListener('input', () => { S.script = ta.value; store.set('script', ta.value); countWords();
+    if (undoText !== null && ta.value) { clearTimeout(undoT); undoText = null; } clearLabel(); });
+  countWords(); clearLabel();
+
+  // ---------- Skrip Saya: the student's own scripts, kept in this phone's browser (localStorage sp_mine) ----------
+  const mine = { list: store.get('mine', []), cur: store.get('mineCur', null) };   // [{id, t, s, at}]
+  const saveMine = () => { store.set('mine', mine.list); updateMineCount(); };
+  function bankEl(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function updateMineCount() {
+    const n = mine.list.length;
+    $('bankCount').textContent = n ? n + ' skrip disimpan · pilih, terus masuk prompter' : 'Tampal skrip, simpan, guna semula';
+  }
+  const titleOf = s => (s.trim().split('\n')[0].replace(/\s+/g, ' ').match(/^(\S+\s*){1,7}/) || [''])[0].trim().slice(0, 60);
+  function renderBank() {
+    const q = $('bankQ').value.trim().toLowerCase(), box = $('bankList'); box.textContent = '';
+    const shown = mine.list.filter(x => !q || (x.t + ' ' + x.s).toLowerCase().includes(q));
+    shown.forEach(x => {
+      const row = bankEl('div', 'mine');
+      const b = bankEl('button', 'sk'); b.type = 'button';
+      const d = new Date(x.at);
+      const no = bankEl('div', 'no', d.getDate() + '/' + (d.getMonth() + 1) + ' · ' + (x.s.trim().match(/\S+/g) || []).length + ' perkataan');
+      if (x.id === mine.cur) no.appendChild(bankEl('em', '', '✓ dalam kotak skrip'));
+      b.append(no, bankEl('div', 'tt', x.t), bankEl('div', 'hk', x.s.trim().split('\n').slice(1).join(' ').trim() || x.s));
+      b.onclick = () => pickScript(x);
+      const del = bankEl('button', 'del', '🗑'); del.type = 'button'; del.setAttribute('aria-label', 'Padam ' + x.t);
+      del.onclick = () => {
+        if (!confirm('Padam skrip "' + x.t + '"? Tak boleh dikembalikan.')) return;
+        mine.list = mine.list.filter(y => y.id !== x.id); if (mine.cur === x.id) { mine.cur = null; store.set('mineCur', null); }
+        saveMine(); renderBank(); toast('Skrip dipadam');
+      };
+      row.append(b, del); box.appendChild(row);
+    });
+    if (!mine.list.length) box.appendChild(bankEl('p', 'bankEmpty', 'Belum ada skrip. Tutup, tampal skrip dalam kotak Skrip, kemudian tekan 💾 Simpan.'));
+    else if (!shown.length) box.appendChild(bankEl('p', 'bankEmpty', 'Tiada skrip yang sepadan.'));
+  }
+  function pickScript(x) {
+    const old = ta.value;
+    setScript(x.s); mine.cur = x.id; store.set('mineCur', x.id);
+    closeBank();
+    if (old.trim() && old !== x.s) { clearTimeout(undoT); undoText = old; undoT = setTimeout(() => { undoText = null; clearLabel(); }, 6000); }
+    clearLabel(); ta.scrollTop = 0;
+    toast('Skrip dimasukkan: ' + x.t);
+  }
+  // save the text in the box: the same script again updates it, otherwise a new one (title asked once)
+  const svb = $('saveScript');
+  const head = v => v.trim().replace(/\s+/g, ' ').slice(0, 25);
+  const curOf = () => { const c = mine.list.find(y => y.id === mine.cur); return c && head(c.s) === head(ta.value) ? c : null; };
+  function saveLabel() {
+    const cur = curOf(), txt = ta.value.trim();
+    svb.hidden = !txt || (cur && cur.s.trim() === txt);
+    svb.textContent = '💾 Simpan';
+  }
+  svb.onclick = () => {
+    const s = ta.value.trim(); if (!s) return;
+    const cur = curOf();
+    if (cur && confirm('Simpan perubahan pada "' + cur.t + '"?\n\nTekan Batal untuk simpan sebagai skrip baru.')) {
+      cur.s = s; cur.at = Date.now(); saveMine(); saveLabel(); toast('Perubahan disimpan: ' + cur.t); return;
+    }
+    const t = prompt('Tajuk skrip ini:', titleOf(s));
+    if (t === null) return;
+    const x = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: t.trim() || titleOf(s) || 'Skrip', s, at: Date.now() };
+    mine.list.unshift(x); mine.cur = x.id; store.set('mineCur', x.id); saveMine(); saveLabel();
+    toast('Disimpan dalam Skrip Saya: ' + x.t);
+  };
+  ta.addEventListener('input', saveLabel);
+  clr.addEventListener('click', () => {   // clear forgets which saved script is in the box; undo brings it back
+    if (!ta.value) { mine.prev = mine.cur; mine.cur = null; } else if (mine.prev) { mine.cur = mine.prev; mine.prev = null; }
+    store.set('mineCur', mine.cur); saveLabel();
+  });
+  function openBank() { $('bank').hidden = false; document.body.style.overflow = 'hidden'; renderBank(); }
+  function closeBank() { $('bank').hidden = true; document.body.style.overflow = ''; saveLabel(); }
+  $('bankOpen').onclick = openBank;
+  $('bankClose').onclick = closeBank;
+  $('bankQ').addEventListener('input', renderBank);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('bank').hidden) closeBank(); });
+  updateMineCount(); saveLabel();
+  function bindRange(id, key, out) {
+    const el = $(id); el.value = S[key]; $(out).textContent = S[key];
+    el.addEventListener('input', () => { S[key] = +el.value; $(out).textContent = el.value; store.set(key, S[key]); });
+  }
+  bindRange('size', 'size', 'sizeVal'); bindRange('speed', 'speed', 'speedSetVal');
+  function bindChip(id, key) {
+    const el = $(id); el.setAttribute('aria-pressed', S[key]);
+    el.addEventListener('click', () => { S[key] = !S[key]; el.setAttribute('aria-pressed', S[key]); store.set(key, S[key]); });
+  }
+  bindChip('optCount', 'countdown'); bindChip('optMirror', 'mirror'); bindChip('optCam', 'back');
+
+  // opened inside WhatsApp / Instagram / TikTok / Facebook: camera usually blocked
+  const ua = navigator.userAgent;
+  if (/FBAN|FBAV|Instagram|musical_ly|Bytedance|TikTok|Line\/|WhatsApp|Messenger/i.test(ua)) $('inapp').hidden = false;
+  const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  if (!canRecord) $('nosupport').hidden = false;
+
+  function show(which) { for (const id of ['setup', 'studio', 'review']) $(id).hidden = id !== which; }
+  function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.id); toast.id = setTimeout(() => t.hidden = true, ms); }
+  const fmtTime = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  const fmtMB = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB';
+
+  // ---------- backup of the last recording (IndexedDB), so a closed tab does not lose it ----------
+  const idb = {
+    open() { return new Promise((res, rej) => { try { const r = indexedDB.open('teleprompter_pelajar', 1); r.onupgradeneeded = () => r.result.createObjectStore('rec'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); },
+    async put(v) { try { const db = await this.open(); await new Promise((res, rej) => { const tx = db.transaction('rec', 'readwrite'); tx.objectStore('rec').put(v, 'last'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); } catch {} },
+    async get() { try { const db = await this.open(); return await new Promise(res => { const r = db.transaction('rec').objectStore('rec').get('last'); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch { return null; } },
+    async clear() { try { const db = await this.open(); db.transaction('rec', 'readwrite').objectStore('rec').delete('last'); } catch {} }
+  };
+  idb.get().then(v => {
+    if (!v || !v.blob) return;
+    $('restoreInfo').textContent = fmtTime(v.dur || 0) + ', ' + fmtMB(v.blob.size) + ', ' + new Date(v.at).toLocaleString('ms-MY', { dateStyle: 'short', timeStyle: 'short' });
+    $('restore').hidden = false;
+    $('restoreBtn').onclick = () => { S.mime = v.mime; S.ext = v.ext; S.res = v.res || ''; openReview(v.blob, v.dur || 0, v.at); };
+    $('restoreDrop').onclick = () => { idb.clear(); $('restore').hidden = true; };
+  });
+
+  // ---------- prompter ----------
+  const scroller = $('scroller'), prompter = $('prompter'), readline = $('readline');
+  function layoutPrompter(keep) {
+    // keep = true: same place in the script after a size change (by share of the script read so far)
+    const share = keep && scroller.scrollHeight ? S.y / Math.max(1, scroller.scrollHeight - prompter.clientHeight) : 0;
+    scroller.innerHTML = '';
+    const paras = S.script.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+    for (const p of (paras.length ? paras : ['(Tiada skrip)'])) { const el = document.createElement('p'); el.textContent = p.replace(/\s*\n\s*/g, ' '); scroller.appendChild(el); }
+    scroller.style.fontSize = S.size + 'px';
+    const h = prompter.clientHeight, lineY = Math.round(h * 0.32);
+    readline.style.top = lineY + 'px';
+    scroller.style.paddingTop = lineY - S.size * 0.69 + 'px';   // the first line's middle sits on the reading arrows
+    scroller.style.paddingBottom = h + 'px';                     // last line can scroll past the line
+    S.y = keep ? share * Math.max(0, scroller.scrollHeight - h) : 0; applyY();
+    $('sizeNow').textContent = S.size;
+  }
+  function setSize(v) {
+    S.size = Math.max(22, Math.min(60, v)); store.set('size', S.size);
+    $('size').value = S.size; $('sizeVal').textContent = S.size;
+    layoutPrompter(true);
+  }
+  $('bigger').onclick = () => setSize(S.size + 3);
+  $('smaller').onclick = () => setSize(S.size - 3);
+  function applyY() { scroller.style.transform = 'translateY(' + (-S.y) + 'px)'; }
+  const pxPerSec = () => S.speed * S.size * 0.42;   // speed 4 at size 34 ~ 57 px/s, a calm reading pace
+  function tick(now) {
+    if (!S.running) return;
+    const dt = Math.min(0.1, (now - S.last) / 1000); S.last = now;
+    if (!S.paused) {
+      const max = scroller.scrollHeight - prompter.clientHeight * 0.32 - S.size;
+      S.y = Math.min(max, S.y + pxPerSec() * dt); applyY();
+    }
+    requestAnimationFrame(tick);
+  }
+  function startScroll() { S.running = true; S.paused = false; $('pausedTag').hidden = true; S.last = performance.now(); requestAnimationFrame(tick); }
+  function stopScroll() { S.running = false; }
+  prompter.addEventListener('click', () => {
+    if (!S.running) return;
+    S.paused = !S.paused; $('pausedTag').hidden = !S.paused;
+  });
+  // drag the script by hand when not scrolling (to find a place before recording)
+  let dragY = null;
+  prompter.addEventListener('pointerdown', e => { if (!S.running || S.paused) dragY = e.clientY; });
+  window.addEventListener('pointermove', e => { if (dragY === null) return; S.y = Math.max(0, S.y - (e.clientY - dragY)); dragY = e.clientY; applyY(); });
+  window.addEventListener('pointerup', () => dragY = null);
+  function setSpeed(v) { S.speed = Math.max(1, Math.min(10, v)); $('speedVal').textContent = S.speed; $('speed').value = S.speed; $('speedSetVal').textContent = S.speed; store.set('speed', S.speed); }
+  $('slower').onclick = () => setSpeed(S.speed - 1);
+  $('faster').onclick = () => setSpeed(S.speed + 1);
+  $('restart').onclick = () => { S.y = 0; applyY(); };
+
+  // ---------- camera ----------
+  const camLive = () => !!(S.stream && S.stream.getVideoTracks().some(t => t.readyState === 'live'));
+  async function openCamera() {
+    $('camErr').hidden = true;
+    if (camLive() && S.streamFacing === S.back) {   // same camera still running: reuse it, framing stays the same
+      const cam = $('cam'); if (cam.srcObject !== S.stream) cam.srcObject = S.stream;
+      try { await cam.play(); } catch {}
+      return true;
+    }
+    stopCamera();
+    // ask for the whole sensor (4:3, 1920x1440 -> 1440x1920 held upright): the widest view, like CapCut.
+    // 16:9 video modes cut the sides of the front camera and look zoomed in. The preview shows the 9:16 middle;
+    // the file keeps the full picture so GAC can crop 9:16 around the face.
+    const video = { facingMode: S.back ? 'environment' : 'user', width: { ideal: 1920 }, height: { ideal: 1440 }, aspectRatio: { ideal: 4 / 3 }, frameRate: { ideal: 30, max: 30 } };
+    // raw voice: the browser's echo cancelling / noise gate / auto volume make speech sound processed
+    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 };
+    try {
+      S.stream = await navigator.mediaDevices.getUserMedia({ video, audio });
+    } catch (e) {
+      const m = { NotAllowedError: 'Kebenaran kamera atau mikrofon ditolak. Benarkan dalam tetapan browser (iPhone: Tetapan → Safari → Kamera & Mikrofon → Tanya/Benarkan), kemudian cuba lagi.',
+                  NotFoundError: 'Tiada kamera atau mikrofon dijumpai pada peranti ini.',
+                  NotReadableError: 'Kamera sedang digunakan oleh app lain. Tutup app itu dan cuba lagi.',
+                  SecurityError: 'Halaman ini mesti dibuka melalui pautan https:// untuk guna kamera.' }[e.name];
+      $('camErrMsg').textContent = m || ('Ralat: ' + (e.message || e.name));
+      $('camErr').hidden = false; return false;
+    }
+    const cam = $('cam'); cam.srcObject = S.stream; cam.classList.toggle('mirror', S.mirror && !S.back);
+    try { await cam.play(); } catch {}
+    S.streamFacing = S.back;
+    const vt = S.stream.getVideoTracks()[0];
+    let st = vt.getSettings();
+    // if the camera came back in another mode than the first time (e.g. after the page was in the background),
+    // ask for the first mode again so every take has the same view
+    const first = S.firstCam && S.firstCam[S.back ? 'b' : 'f'];
+    if (first && (st.width !== first.width || st.height !== first.height)) {
+      try { await vt.applyConstraints({ width: { exact: first.width }, height: { exact: first.height }, frameRate: { ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
+    }
+    // v1.4: keep the camera at 24-30 fps. In a dim room an iPhone may slow the camera down for a brighter
+    // picture (choppy hands and lips); a slightly darker picture is fixed in the edit, missing frames are not.
+    try { await vt.applyConstraints({ ...(st.width ? { width: { exact: st.width }, height: { exact: st.height } } : {}), frameRate: { min: 24, ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
+    if (st.width && st.height) { S.firstCam = S.firstCam || {}; S.firstCam[S.back ? 'b' : 'f'] = S.firstCam[S.back ? 'b' : 'f'] || { width: st.width, height: st.height }; }
+    S.res = st.width && st.height ? st.width + '×' + st.height : '';
+    return true;
+  }
+  function stopCamera() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } }
+  async function wakeOn() { try { S.wake = await navigator.wakeLock?.request('screen'); } catch {} }
+  function wakeOff() { try { S.wake?.release(); } catch {} S.wake = null; }
+
+  $('start').onclick = async () => {
+    if (!canRecord) { toast('Browser ini tak boleh merakam. Guna Safari atau Chrome terkini.'); return; }
+    S.script = ta.value; store.set('script', S.script);
+    show('studio'); setSpeed(S.speed);
+    layoutPrompter();
+    await openCamera(); wakeOn();
+  };
+  $('camRetry').onclick = openCamera;
+  $('camBack').onclick = $('back').onclick = () => { if (S.rec) return; stopScroll(); stopCamera(); wakeOff(); show('setup'); };
+  window.addEventListener('resize', () => { if (!$('studio').hidden && !S.running) layoutPrompter(); });
+
+  // ---------- recording ----------
+  function pickMime() {
+    const list = [['video/mp4;codecs=avc1.640028,mp4a.40.2', 'mp4'], ['video/mp4;codecs=avc1,mp4a', 'mp4'], ['video/mp4', 'mp4'],
+                  ['video/webm;codecs=vp9,opus', 'webm'], ['video/webm;codecs=vp8,opus', 'webm'], ['video/webm', 'webm']];
+    for (const [m, e] of list) if (MediaRecorder.isTypeSupported?.(m)) return [m, e];
+    return ['', 'mp4'];
+  }
+  function countdown() {
+    return new Promise(res => {
+      if (!S.countdown) return res();
+      const el = $('count'); let n = 3; el.hidden = false; el.textContent = n;
+      const id = setInterval(() => { n--; if (n === 0) { clearInterval(id); el.hidden = true; res(); } else el.textContent = n; }, 1000);
+    });
+  }
+  // Cut the middle 9:16 of the camera picture into a canvas at full sensor detail (1440x1920 -> 1080x1920,
+  // no scaling) and record that, so the saved file is ready for TikTok/Reels. Not mirrored: text reads right.
+  function cropStream() {
+    const cam = $('cam'), vw = cam.videoWidth, vh = cam.videoHeight;
+    if (!vw || !vh || !HTMLCanvasElement.prototype.captureStream) return null;
+    let cw = vw, ch = vh;
+    if (vw / vh > 9 / 16) cw = Math.round(vh * 9 / 16 / 2) * 2; else ch = Math.round(vw * 16 / 9 / 2) * 2;
+    if (cw === vw && ch === vh) return null;   // already 9:16: record the camera as it is
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    c.style.cssText = 'position:fixed;left:-10000px;top:0;width:2px;height:2px;pointer-events:none';
+    document.body.appendChild(c);
+    const g = c.getContext('2d', { alpha: false, desynchronized: true }), sx = (vw - cw) / 2, sy = (vh - ch) / 2;
+    // v1.4: the old 30 fps setInterval + captureStream(30) gave only 16.7 fps on a 110 s iPhone take.
+    // Now every NEW camera frame is drawn once (requestVideoFrameCallback) and pushed into the file by hand
+    // (captureStream(0) + requestFrame), so the file gets the camera's own rate. A timer is only the fallback.
+    const vs = c.captureStream(0), vtr = vs.getVideoTracks()[0];
+    const push = () => { if (vtr.requestFrame) vtr.requestFrame(); };
+    let on = true, n = 0, tid = 0, vid = 0;
+    const draw = () => { g.drawImage(cam, sx, sy, cw, ch, 0, 0, cw, ch); push(); n++; };
+    if (cam.requestVideoFrameCallback && vtr.requestFrame) {
+      const loop = () => { if (!on) return; draw(); vid = cam.requestVideoFrameCallback(loop); };
+      vid = cam.requestVideoFrameCallback(loop);
+      // if the camera stalls (no new frame for 70 ms) still draw, so the file never freezes
+      let lastN = -1; tid = setInterval(() => { if (n === lastN) draw(); lastN = n; }, 70);
+    } else {
+      const vs2 = vtr.requestFrame ? null : c.captureStream(30);   // old browsers: timer + automatic capture
+      draw(); tid = setInterval(draw, 1000 / 30);
+      if (vs2) { vs.getTracks().forEach(t => t.stop()); S.fpsCount = () => n; S.cropStop = () => { clearInterval(tid); vs2.getTracks().forEach(t => t.stop()); c.remove(); }; S.res = cw + '×' + ch; return vs2.getVideoTracks()[0]; }
+    }
+    S.fpsCount = () => n;
+    S.cropStop = () => { on = false; clearInterval(tid); try { cam.cancelVideoFrameCallback?.(vid); } catch {} vs.getTracks().forEach(t => t.stop()); c.remove(); };
+    S.res = cw + '×' + ch;
+    return vtr;
+  }
+  // Voice level: iPhones give a very quiet raw mic (about -50 LUFS in the first test). Lift the voice
+  // before it is encoded: follow the speech peaks, aim them at about -6 dBFS (at most +30 dB), never
+  // lift pauses (the level only follows sound close to the current speech level), and a limiter
+  // stops clipping. Phones that are already loud get gain 1.
+  function boostAudio() {
+    const tr = S.stream && S.stream.getAudioTracks()[0], ac = S.ac;
+    if (!tr || !ac) return null;
+    try {
+      const src = ac.createMediaStreamSource(new MediaStream([tr]));
+      const an = ac.createAnalyser(); an.fftSize = 2048; const buf = new Float32Array(an.fftSize);
+      const gain = ac.createGain(); gain.gain.value = 1;
+      // v1.4: the old chain (peaks aimed at -6 dBFS, compressor at -4) clipped: +2.7 dBFS peaks, about 17% of a
+      // 110 s take touched full scale. Now: peaks aimed at -12 dBFS, a compressor from -14 dBFS, and a soft
+      // clipper last that can never output more than -1.5 dBFS. GAC/edit-video normalise the loudness later.
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.knee.value = 6; comp.ratio.value = 12; comp.attack.value = 0.001; comp.release.value = 0.15;
+      const clip = ac.createWaveShaper(), K = 0.84, N = 2048, curve = new Float32Array(N);
+      for (let i = 0; i < N; i++) { const x = i / (N - 1) * 2 - 1; curve[i] = K * Math.tanh(x * 2 / K); }   // input ±0.5 -> ±0.84 max
+      clip.curve = curve; clip.oversample = '4x';
+      const pre = ac.createGain(); pre.gain.value = 0.5;   // the curve's range is ±1 in: halve so peaks up to +6 dBFS are shaped, not cut
+      const dst = ac.createMediaStreamDestination();
+      src.connect(an); src.connect(gain); gain.connect(comp); comp.connect(pre); pre.connect(clip); clip.connect(dst);
+      let lvl = 0.06;   // running estimate of the speech peak (linear, 1 = full scale)
+      const tid = setInterval(() => {
+        an.getFloatTimeDomainData(buf); let pk = 0;
+        for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > pk) pk = a; }
+        if (pk > lvl) lvl = pk;                                  // louder: follow at once
+        else if (pk > lvl * 0.25) lvl = Math.max(0.008, lvl * 0.97);   // quieter speech: settle down slowly
+        const want = Math.min(32, Math.max(1, 0.25 / lvl));
+        // turning DOWN is fast (no loud burst), turning UP is slow (no pumping in pauses)
+        gain.gain.setTargetAtTime(want, ac.currentTime, want < gain.gain.value ? 0.03 : 0.5);
+        S.gainNow = want;
+      }, 50);
+      S.audioStop = () => { clearInterval(tid); try { src.disconnect(); clip.disconnect(); } catch {} };
+      return dst.stream.getAudioTracks()[0];
+    } catch { return null; }
+  }
+  async function startRec() {
+    // the audio context must start inside the tap itself (iPhone rule), before anything is awaited
+    try { S.ac = S.ac || new (window.AudioContext || window.webkitAudioContext)(); S.ac.resume(); } catch { S.ac = null; }
+    if (!S.stream) { const ok = await openCamera(); if (!ok) return; }
+    $('rec').disabled = true;
+    await countdown();
+    [S.mime, S.ext] = pickMime(); S.chunks = [];
+    const vtrack = cropStream() || S.stream.getVideoTracks()[0];   // 9:16 file; the raw 4:3 camera only if this browser cannot crop
+    const atrack = boostAudio() || S.stream.getAudioTracks()[0];   // lifted voice; the raw mic if Web Audio is missing
+    const recStream = new MediaStream([vtrack, atrack].filter(Boolean));
+    try {
+      S.rec = new MediaRecorder(recStream, { mimeType: S.mime || undefined, videoBitsPerSecond: 12_000_000, audioBitsPerSecond: 192_000 });
+    } catch { S.rec = new MediaRecorder(recStream); }
+    S.mime = S.rec.mimeType || S.mime;
+    if (/webm/.test(S.mime)) S.ext = 'webm';
+    S.rec.ondataavailable = e => { if (e.data && e.data.size) S.chunks.push(e.data); };
+    S.rec.onstop = finishRec;
+    S.rec.start(1000);
+    S.t0 = performance.now();
+    $('rec').disabled = false; $('rec').classList.add('on'); $('rec').setAttribute('aria-label', 'Henti rakam');
+    $('topbar').hidden = false; $('time').textContent = '0:00';
+    S.timerId = setInterval(() => $('time').textContent = fmtTime((performance.now() - S.t0) / 1000), 250);
+    $('back').disabled = true; $('back').style.opacity = .35;
+    startScroll();
+  }
+  function stopRec() { if (S.rec && S.rec.state !== 'inactive') S.rec.stop(); }
+  function finishRec() {
+    const dur = (performance.now() - S.t0) / 1000;
+    clearInterval(S.timerId); stopScroll();
+    $('rec').classList.remove('on'); $('rec').setAttribute('aria-label', 'Mula rakam');
+    $('topbar').hidden = true; $('back').disabled = false; $('back').style.opacity = 1;
+    S.rec = null;
+    // frames actually drawn per second: shown on the review screen so a choppy take is spotted at once
+    if (S.fpsCount && dur > 1) { S.res = S.res.replace(/ · .*$/, '') + ' · ' + Math.round(S.fpsCount() / dur) + ' fps'; S.fpsCount = null; }
+    if (S.cropStop) { S.cropStop(); S.cropStop = null; }
+    if (S.audioStop) { S.audioStop(); S.audioStop = null; }
+    const blob = new Blob(S.chunks, { type: S.mime.split(';')[0] || 'video/mp4' }); S.chunks = [];
+    // keep the camera open for "Rakam semula": an iPhone that reopens the camera can pick a different,
+    // wider camera mode (user saw more of the room on the 2nd take until he refreshed). Same stream = same framing.
+    wakeOff();
+    const at = Date.now();
+    idb.put({ blob, dur, at, mime: S.mime, ext: S.ext, res: S.res });
+    openReview(blob, dur, at);
+  }
+  $('rec').onclick = () => { if (S.rec) stopRec(); else startRec(); };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && S.rec) { stopRec(); toast('Rakaman dihentikan sebab skrin bertukar app.'); }
+    else if (document.hidden && !$('review').hidden) stopCamera();   // left the app from the review screen: free the camera
+  });
+
+  // ---------- review / save ----------
+  function fileName(at) {
+    const d = new Date(at), p = n => String(n).padStart(2, '0');
+    return `rakaman_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${S.ext}`;
+  }
+  function openReview(blob, dur, at) {
+    S.blob = blob; S.at = at; S.dur = dur; S.small = null; resetSmall();
+    if (S.url) URL.revokeObjectURL(S.url);
+    S.url = URL.createObjectURL(blob);
+    const pv = $('playback'); pv.src = S.url;
+    $('fDur').textContent = fmtTime(dur); $('fSize').textContent = fmtMB(blob.size);
+    $('fFmt').textContent = S.ext.toUpperCase(); $('fRes').textContent = S.res || '–'; $('fResWrap').hidden = !S.res;
+    const m = /(\d+)×(\d+)/.exec(S.res || ''); $('wideHint').hidden = !(m && +m[1] / +m[2] > 0.6);   // wider than 9:16
+    const file = new File([blob], fileName(at), { type: blob.type });
+    const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    $('share').hidden = !canShare; $('shareHint').hidden = !canShare;
+    show('review');
+  }
+  $('share').onclick = async () => {
+    const file = new File([S.blob], fileName(S.at), { type: S.blob.type });
+    try { await navigator.share({ files: [file], title: file.name }); idb.clear(); $('restore').hidden = true; toast('Dihantar. Kalau pilih Simpan Video, ia ada dalam Galeri.'); }
+    catch (e) { if (e.name !== 'AbortError') toast('Tak dapat buka menu kongsi. Guna "Muat turun fail".'); }
+  };
+  $('download').onclick = () => {
+    const a = document.createElement('a'); a.href = S.url; a.download = fileName(S.at);
+    document.body.appendChild(a); a.click(); a.remove(); idb.clear(); $('restore').hidden = true;
+    toast(/iPhone|iPad/.test(ua) ? 'Disimpan dalam app Files → Muat Turun.' : 'Disimpan dalam folder Downloads.', 4500);
+  };
+  // ---------- small copy for chat uploads (full-quality recording stays as it is) ----------
+  // Re-encodes a copy on the phone with WebCodecs: picture 720 wide, bitrate chosen so the file is about
+  // SMALL_MB, sound copied as it is (no quality loss). Needs iOS 16.4+ / a recent Chrome; hidden otherwise.
+  const SMALL_MB = 24;
+  const smallBps = () => Math.round(Math.min(4e6, Math.max(1.2e6, SMALL_MB * 8e6 / Math.max(1, S.dur || 60) - 180e3)));
+  function resetSmall() {
+    const b = $('small'), ok = 'VideoEncoder' in window && 'VideoDecoder' in window && S.ext === 'mp4';
+    b.hidden = !ok; b.disabled = false; $('smallInfo').hidden = true;
+    const est = (smallBps() + 180e3) * (S.dur || 0) / 8 / 1048576;
+    b.textContent = 'Buat fail kecil untuk chat (± ' + Math.max(1, Math.round(est)) + ' MB)';
+  }
+  function loadScript(src) {
+    return new Promise((res, rej) => { if (document.querySelector('script[src="' + src + '"]')) return res();
+      const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load')); document.head.appendChild(s); });
+  }
+  // Samples of one track of a fragmented MP4 (moof/traf/trun), in decode order.
+  function fragSamples(u8, tid, timescale) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), rd = i => dv.getUint32(i), out = [];
+    function* boxes(s, e) {
+      let i = s;
+      while (i + 8 <= e) {
+        let sz = rd(i), h = 8; const t = String.fromCharCode(u8[i + 4], u8[i + 5], u8[i + 6], u8[i + 7]);
+        if (sz === 1) { sz = Number(dv.getBigUint64(i + 8)); h = 16; } else if (sz === 0) sz = e - i;
+        if (sz < h) return;
+        yield [t, i, i + h, i + sz]; i += sz;
+      }
+    }
+    for (const [t, ms, mc, me] of boxes(0, u8.length)) {
+      if (t !== 'moof') continue;
+      for (const [t2, , c2, e2] of boxes(mc, me)) {
+        if (t2 !== 'traf') continue;
+        let id = -1, base = ms, dDur = 0, dSize = 0, dFlags = 0, time = 0, pos = null;
+        for (const [t3, , c3] of boxes(c2, e2)) {
+          if (t3 === 'tfhd') {
+            const fl = rd(c3) & 0xffffff; id = rd(c3 + 4); let p = c3 + 8;
+            if (fl & 1) { base = Number(dv.getBigUint64(p)); p += 8; }
+            if (fl & 2) p += 4;
+            if (fl & 8) { dDur = rd(p); p += 4; }
+            if (fl & 0x10) { dSize = rd(p); p += 4; }
+            if (fl & 0x20) { dFlags = rd(p); p += 4; }
+          } else if (id !== tid) continue;
+          else if (t3 === 'tfdt') time = u8[c3] === 1 ? Number(dv.getBigUint64(c3 + 4)) : rd(c3 + 4);
+          else if (t3 === 'trun') {
+            const v = u8[c3], fl = rd(c3) & 0xffffff, n = rd(c3 + 4); let p = c3 + 8, off = pos === null ? base : pos, first = null;
+            if (fl & 1) { off = base + dv.getInt32(p); p += 4; }
+            if (fl & 4) { first = rd(p); p += 4; }
+            for (let k = 0; k < n; k++) {
+              let dur = dDur, size = dSize, flags = dFlags, cto = 0;
+              if (fl & 0x100) { dur = rd(p); p += 4; }
+              if (fl & 0x200) { size = rd(p); p += 4; }
+              if (fl & 0x400) { flags = rd(p); p += 4; }
+              if (fl & 0x800) { cto = v ? dv.getInt32(p) : rd(p); p += 4; }
+              if (k === 0 && first !== null) flags = first;
+              out.push({ data: u8.subarray(off, off + size), cts: time + cto, duration: dur, is_sync: !(flags & 0x10000), timescale });
+              off += size; time += dur;
+            }
+            pos = off;
+          }
+        }
+      }
+    }
+    return out;
+  }
+  async function makeSmall(blob, onProgress) {
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js');
+    // 1. read the recording's samples
+    const buf = await blob.arrayBuffer(); buf.fileStart = 0;
+    const mp4 = MP4Box.createFile(); const samples = {};
+    const info = await new Promise((res, rej) => { mp4.onReady = res; mp4.onError = rej; mp4.appendBuffer(buf); mp4.flush(); });
+    const vt = info.videoTracks[0], at = info.audioTracks[0];
+    if (!vt) throw new Error('no video');
+    if (info.isFragmented) {
+      // Safari writes fragments with several sample runs per track; mp4box 0.5.2 misreads the later runs,
+      // so the samples are read here directly (moov details still come from mp4box)
+      const u8 = new Uint8Array(buf);
+      for (const t of [vt, at].filter(Boolean)) samples[t.id] = fragSamples(u8, t.id, t.timescale);
+    } else {
+      mp4.onSamples = (id, u, ss) => { for (const x of ss) (samples[id] = samples[id] || []).push(x); };
+      for (const t of [vt, at].filter(Boolean)) mp4.setExtractionOptions(t.id, null, { nbSamples: 1e9 });
+      mp4.start(); mp4.flush();
+    }
+    const entry = id => mp4.getTrackById(id).mdia.minf.stbl.stsd.entries[0];
+    const boxBytes = box => { const s = new DataStream(undefined, 0, DataStream.BIG_ENDIAN); box.write(s); return new Uint8Array(s.buffer, 8); };
+    // 2. size and turn of the output picture (raw camera files can carry a 90° turn)
+    const m = vt.matrix || [65536, 0, 0, 0, 65536]; const rot = Math.round(Math.atan2(m[1], m[0]) * 180 / Math.PI);
+    const sw = vt.video.width, sh = vt.video.height, turned = Math.abs(rot) === 90;
+    const dw0 = turned ? sh : sw, dh0 = turned ? sw : sh, k = Math.min(1, 720 / Math.min(dw0, dh0));
+    const W2 = Math.round(dw0 * k / 2) * 2, H2 = Math.round(dh0 * k / 2) * 2;
+    const cv = document.createElement('canvas'); cv.width = W2; cv.height = H2; const g = cv.getContext('2d');
+    // 3. encoder + muxer
+    const bps = smallBps();
+    let cfg = null;
+    for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028']) {
+      const c = { codec, width: W2, height: H2, bitrate: bps, framerate: 30, avc: { format: 'avc' } };
+      try { if ((await VideoEncoder.isConfigSupported(c)).supported) { cfg = c; break; } } catch {}
+    }
+    if (!cfg) throw new Error('no encoder');
+    const aEntry = at && entry(at.id);
+    const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), fastStart: 'in-memory', firstTimestampBehavior: 'cross-track-offset',
+      video: { codec: 'avc', width: W2, height: H2 },
+      audio: at ? { codec: 'aac', numberOfChannels: at.audio.channel_count, sampleRate: at.audio.sample_rate } : undefined });
+    let fail = null, done = 0; const total = samples[vt.id].length;
+    const enc = new VideoEncoder({ output: (ch, meta) => muxer.addVideoChunk(ch, meta), error: e => fail = e });
+    enc.configure(cfg);
+    const dec = new VideoDecoder({ error: e => fail = e, output: f => {
+      g.save(); g.translate(W2 / 2, H2 / 2); if (rot) g.rotate(rot * Math.PI / 180);
+      const fw = turned ? H2 : W2, fh = turned ? W2 : H2; g.drawImage(f, -fw / 2, -fh / 2, fw, fh); g.restore();
+      const nf = new VideoFrame(cv, { timestamp: f.timestamp, duration: f.duration || 33333 }); f.close();
+      enc.encode(nf, { keyFrame: done % 60 === 0 }); nf.close(); done++; onProgress(done / total);
+    } });
+    const ve = entry(vt.id);
+    dec.configure({ codec: vt.codec, codedWidth: sw, codedHeight: sh, description: boxBytes(ve.avcC || ve.hvcC) });
+    const us = (v, ts) => Math.round(v * 1e6 / ts);
+    for (const s of samples[vt.id]) {
+      if (fail) throw fail;
+      dec.decode(new EncodedVideoChunk({ type: s.is_sync ? 'key' : 'delta', timestamp: us(s.cts, s.timescale), duration: us(s.duration, s.timescale), data: s.data }));
+      while ((dec.decodeQueueSize > 8 || enc.encodeQueueSize > 8) && !fail) await new Promise(r => setTimeout(r, 4));
+    }
+    await dec.flush(); await enc.flush(); if (fail) throw fail;
+    // 4. sound: copied as it is
+    if (at) {
+      const esd = aEntry.esds && aEntry.esds.esd; const dsi = esd && esd.descs[0] && esd.descs[0].descs[0];
+      const meta = { decoderConfig: { codec: 'mp4a.40.2', numberOfChannels: at.audio.channel_count, sampleRate: at.audio.sample_rate, description: dsi ? new Uint8Array(dsi.data) : undefined } };
+      samples[at.id].forEach((s, i) => muxer.addAudioChunkRaw(s.data, 'key', us(s.cts, s.timescale), us(s.duration, s.timescale), i === 0 ? meta : undefined));
+    }
+    muxer.finalize(); dec.close(); enc.close();
+    return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  }
+  async function saveBlob(blob, name) {
+    const file = new File([blob], name, { type: blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
+    toast(/iPhone|iPad/.test(ua) ? 'Disimpan dalam app Files → Muat Turun.' : 'Disimpan dalam folder Downloads.', 4500);
+  }
+  $('small').onclick = async () => {
+    const b = $('small'), name = fileName(S.at).replace(/\.(\w+)$/, '_kecil.mp4');
+    if (S.small) { saveBlob(S.small, name); return; }   // second tap: save (the share sheet needs a fresh tap)
+    b.disabled = true; b.textContent = 'Memampatkan… 0%';
+    try {
+      S.small = await makeSmall(S.blob, p => b.textContent = 'Memampatkan… ' + Math.min(99, Math.round(p * 100)) + '%');
+      b.disabled = false; b.textContent = 'Simpan fail kecil (' + fmtMB(S.small.size) + ')';
+      $('smallInfo').textContent = 'Fail kecil siap: ' + fmtMB(S.small.size) + ', 720p. Tekan butang di atas untuk simpan atau kongsi.'; $('smallInfo').hidden = false;
+    } catch (e) {
+      console.error(e); b.hidden = true; S.small = null;
+      toast('Telefon ini tak dapat buat fail kecil. Guna fail biasa.', 4500);
+    }
+  };
+  $('again').onclick = async () => { $('playback').pause(); show('studio'); layoutPrompter(); await openCamera(); wakeOn(); };
+  $('toScript').onclick = () => { $('playback').pause(); stopCamera(); show('setup'); };
+})();
+</script>
+</body>
+</html>
