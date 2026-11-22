@@ -154,7 +154,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   <div class="wrap">
     <div class="brand">
       <span class="badge" aria-hidden="true">SU</span>
-      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · <span style="color:var(--muted);opacity:.7">v1.4</span></div></div>
+      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · <span style="color:var(--muted);opacity:.7">v1.5</span></div></div>
     </div>
     <p class="sub">Tampal skrip, tekan Mula. Skrip bergulir di atas skrin, dekat kamera, jadi mata nampak pandang penonton.</p>
 
@@ -488,9 +488,6 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     if (first && (st.width !== first.width || st.height !== first.height)) {
       try { await vt.applyConstraints({ width: { exact: first.width }, height: { exact: first.height }, frameRate: { ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
     }
-    // v1.4: keep the camera at 24-30 fps. In a dim room an iPhone may slow the camera down for a brighter
-    // picture (choppy hands and lips); a slightly darker picture is fixed in the edit, missing frames are not.
-    try { await vt.applyConstraints({ ...(st.width ? { width: { exact: st.width }, height: { exact: st.height } } : {}), frameRate: { min: 24, ideal: 30, max: 30 } }); st = vt.getSettings(); } catch {}
     if (st.width && st.height) { S.firstCam = S.firstCam || {}; S.firstCam[S.back ? 'b' : 'f'] = S.firstCam[S.back ? 'b' : 'f'] || { width: st.width, height: st.height }; }
     S.res = st.width && st.height ? st.width + '×' + st.height : '';
     return true;
