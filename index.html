@@ -154,7 +154,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   <div class="wrap">
     <div class="brand">
       <span class="badge" aria-hidden="true">SU</span>
-      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · <span style="color:var(--muted);opacity:.7">v1.5</span></div></div>
+      <div><h1><span>SU</span> Prompter</h1><div class="by">by Sir Ujang · <span style="color:var(--muted);opacity:.7">v1.6</span></div></div>
     </div>
     <p class="sub">Tampal skrip, tekan Mula. Skrip bergulir di atas skrin, dekat kamera, jadi mata nampak pandang penonton.</p>
 
@@ -165,7 +165,7 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
       <b>Browser ini tak boleh merakam.</b> Cuba Safari (iPhone) atau Chrome (Android/laptop) versi terkini.
     </div>
     <div id="restore" class="note" hidden>
-      <b>Ada rakaman yang belum disimpan</b> (<span id="restoreInfo"></span>).
+      <b>Sandaran rakaman terakhir</b> (<span id="restoreInfo"></span>). Kekal di sini sampai anda tekan Buang atau rakam video baru.
       <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
         <button class="secondary" id="restoreBtn" type="button">Buka rakaman itu</button>
         <button class="secondary" id="restoreDrop" type="button">Buang</button>
@@ -389,17 +389,20 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   // ---------- backup of the last recording (IndexedDB), so a closed tab does not lose it ----------
   const idb = {
     open() { return new Promise((res, rej) => { try { const r = indexedDB.open('teleprompter', 1); r.onupgradeneeded = () => r.result.createObjectStore('rec'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); },
-    async put(v) { try { const db = await this.open(); await new Promise((res, rej) => { const tx = db.transaction('rec', 'readwrite'); tx.objectStore('rec').put(v, 'last'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); } catch {} },
+    async put(v) { try { const db = await this.open(); await new Promise((res, rej) => { const tx = db.transaction('rec', 'readwrite'); tx.objectStore('rec').put(v, 'last'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); }); return true; } catch { return false; } },
     async get() { try { const db = await this.open(); return await new Promise(res => { const r = db.transaction('rec').objectStore('rec').get('last'); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch { return null; } },
     async clear() { try { const db = await this.open(); db.transaction('rec', 'readwrite').objectStore('rec').delete('last'); } catch {} }
   };
-  idb.get().then(v => {
+  // the box always points at what is stored: saving / sharing never deletes it (a cancelled or failed save
+  // cannot be detected). Only Buang, or the next take, replaces it.
+  function showBackup(v) {
     if (!v || !v.blob) return;
     $('restoreInfo').textContent = fmtTime(v.dur || 0) + ', ' + fmtMB(v.blob.size) + ', ' + new Date(v.at).toLocaleString('ms-MY', { dateStyle: 'short', timeStyle: 'short' });
     $('restore').hidden = false;
     $('restoreBtn').onclick = () => { S.mime = v.mime; S.ext = v.ext; S.res = v.res || ''; openReview(v.blob, v.dur || 0, v.at); };
     $('restoreDrop').onclick = () => { idb.clear(); $('restore').hidden = true; };
-  });
+  }
+  idb.get().then(showBackup);
 
   // ---------- prompter ----------
   const scroller = $('scroller'), prompter = $('prompter'), readline = $('readline');
@@ -633,7 +636,8 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     // wider camera mode (user saw more of the room on the 2nd take until he refreshed). Same stream = same framing.
     wakeOff();
     const at = Date.now();
-    idb.put({ blob, dur, at, mime: S.mime, ext: S.ext, res: S.res });
+    const bak = { blob, dur, at, mime: S.mime, ext: S.ext, res: S.res };
+    idb.put(bak).then(ok => ok ? showBackup(bak) : toast('Sandaran gagal (storan telefon mungkin penuh). Simpan video ini sekarang, jangan tutup halaman.', 8000));
     openReview(blob, dur, at);
   }
   $('rec').onclick = () => { if (S.rec) stopRec(); else startRec(); };
@@ -662,12 +666,12 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   }
   $('share').onclick = async () => {
     const file = new File([S.blob], fileName(S.at), { type: S.blob.type });
-    try { await navigator.share({ files: [file], title: file.name }); idb.clear(); $('restore').hidden = true; toast('Dihantar. Kalau pilih Simpan Video, ia ada dalam Galeri.'); }
+    try { await navigator.share({ files: [file], title: file.name }); toast('Dihantar. Kalau pilih Simpan Video, ia ada dalam Galeri.'); }
     catch (e) { if (e.name !== 'AbortError') toast('Tak dapat buka menu kongsi. Guna "Muat turun fail".'); }
   };
   $('download').onclick = () => {
     const a = document.createElement('a'); a.href = S.url; a.download = fileName(S.at);
-    document.body.appendChild(a); a.click(); a.remove(); idb.clear(); $('restore').hidden = true;
+    document.body.appendChild(a); a.click(); a.remove();
     toast(/iPhone|iPad/.test(ua) ? 'Disimpan dalam app Files → Muat Turun.' : 'Disimpan dalam folder Downloads.', 4500);
   };
   // ---------- small copy for chat uploads (full-quality recording stays as it is) ----------
