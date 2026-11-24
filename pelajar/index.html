@@ -59,6 +59,13 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
 .bankTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bankTop h2{margin:0;font-size:20px;font-weight:800}
 .bankTop h2 span{color:var(--gold)}
+.bankTop .acts{display:flex;gap:8px;align-items:center}
+.chip.imp{padding:8px 14px;font-size:13px;border-color:var(--gold);color:var(--gold);white-space:nowrap}
+#impBox{display:flex;flex-direction:column;gap:8px}
+#impBox textarea{width:100%;min-height:150px;border-radius:12px;border:1px solid var(--line);background:#17150f;color:var(--fg);padding:12px 14px;font:500 15px var(--font)}
+#impBox .r{display:flex;gap:8px}
+#impBox .r button{flex:1;padding:12px;font-size:15px}
+.reload{margin-left:auto;flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);font-size:18px;color:var(--muted)}
 .close{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);font-size:18px}
 #bankQ{width:100%;border-radius:12px;border:1px solid var(--line);background:#17150f;color:var(--fg);padding:12px 14px;font:500 16px var(--font)}
 .bankTabs{display:flex;gap:8px;overflow-x:auto}
@@ -161,7 +168,8 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
   <div class="wrap">
     <div class="brand">
       <span class="badge gac" aria-hidden="true">GAC</span>
-      <div><h1><span>GAC</span> Prompter</h1><div class="by">by Sir Ujang · Pelajar <span style="color:var(--muted);opacity:.7">v1.3</span></div></div>
+      <div><h1><span>GAC</span> Prompter</h1><div class="by">by Sir Ujang · Pelajar <span style="color:var(--muted);opacity:.7">v1.4</span></div></div>
+      <button class="reload" id="reloadBtn" type="button" aria-label="Muat semula">↻</button>
     </div>
     <p class="sub">Tampal skrip, tekan Mula. Skrip bergulir di atas skrin, dekat kamera, jadi mata nampak pandang penonton.</p>
 
@@ -264,7 +272,12 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
 <!-- ======================= Bank skrip ======================= -->
 <section id="bank" role="dialog" aria-modal="true" aria-labelledby="bankTitle" hidden>
   <div class="bankHead">
-    <div class="bankTop"><h2 id="bankTitle">Skrip <span>Saya</span></h2><button class="close" id="bankClose" type="button" aria-label="Tutup">✕</button></div>
+    <div class="bankTop"><h2 id="bankTitle">Skrip <span>Saya</span></h2><span class="acts"><button class="chip imp" id="impOpen" type="button">📥 Import</button><button class="close" id="bankClose" type="button" aria-label="Tutup">✕</button></span></div>
+    <div id="impBox" hidden>
+      <p class="bankEmpty" style="padding:0;text-align:left;font-size:13px">Tampal skrip di sini. Satu skrip: baris pertama tajuk, kemudian teks. Banyak skrip: pisahkan dengan baris <b style="color:var(--gold)">---</b>. Tajuk yang sama akan dikemas kini, bukan berganda.</p>
+      <textarea id="impText" spellcheck="false" placeholder="Tajuk skrip 1&#10;Teks skrip 1...&#10;---&#10;Tajuk skrip 2&#10;Teks skrip 2..."></textarea>
+      <div class="r"><button class="secondary" id="impCancel" type="button">Batal</button><button class="secondary" id="impGo" type="button" style="border-color:var(--gold);color:var(--gold)">Simpan semua</button></div>
+    </div>
     <input id="bankQ" type="search" placeholder="Cari tajuk atau ayat..." autocomplete="off">
     <p class="bankEmpty" id="mineHelp" style="padding:0;text-align:left;font-size:13px">Tampal skrip dalam kotak Skrip, tekan <b style="color:var(--gold)">💾 Simpan</b>. Skrip disimpan dalam telefon ini sahaja.</p>
   </div>
@@ -382,7 +395,27 @@ textarea{width:100%;min-height:38vh;resize:vertical;border-radius:16px;border:1p
     store.set('mineCur', mine.cur); saveLabel();
   });
   function openBank() { $('bank').hidden = false; document.body.style.overflow = 'hidden'; renderBank(); }
-  function closeBank() { $('bank').hidden = true; document.body.style.overflow = ''; saveLabel(); }
+  function closeBank() { showImp(false); $('bank').hidden = true; document.body.style.overflow = ''; saveLabel(); }
+  // ---------- Import: paste many scripts at once (blocks split by a --- line; first line = title) ----------
+  const impBox = $('impBox');
+  const showImp = on => { impBox.hidden = !on; $('bankQ').hidden = on; $('mineHelp').hidden = on; if (on) { $('impText').value = ''; $('impText').focus(); } };
+  $('impOpen').onclick = () => showImp(impBox.hidden);
+  $('impCancel').onclick = () => showImp(false);
+  $('impGo').onclick = () => {
+    const raw = $('impText').value.replace(/\r/g, '').trim();
+    if (!raw) { toast('Tiada apa untuk diimport'); return; }
+    let add = 0, upd = 0;
+    raw.split(/\n[ \t]*-{3,}[ \t]*(?:\n|$)/).map(b => b.trim()).filter(Boolean).forEach(b => {
+      const lines = b.split('\n'), one = lines.length === 1;
+      const t = (one ? titleOf(b) : lines[0].trim().slice(0, 60)) || 'Skrip', s = one ? b : lines.slice(1).join('\n').trim() || b;
+      const old = mine.list.find(y => y.t.toLowerCase() === t.toLowerCase());
+      if (old) { if (old.s !== s) { old.s = s; old.at = Date.now(); upd++; } }
+      else { mine.list.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t, s, at: Date.now() }); add++; }
+    });
+    saveMine(); showImp(false); renderBank();
+    toast(add + ' skrip baru' + (upd ? ', ' + upd + ' dikemas kini' : ''));
+  };
+  $('reloadBtn').onclick = () => location.reload();
   $('bankOpen').onclick = openBank;
   $('bankClose').onclick = closeBank;
   $('bankQ').addEventListener('input', renderBank);
